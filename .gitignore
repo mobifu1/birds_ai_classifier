@@ -1,0 +1,7 @@
+# Ignoriere den Download-Ordner mit den Rohdaten
+best_of/
+birds_grabber/
+birds_training_dataset/
+birds_training_dataset_masked_source/
+neue_bilder_downloads/
+new_birds/

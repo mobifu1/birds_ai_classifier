@@ -1,0 +1,18 @@
+Bedienung:
+
+Schritt 1: Quell-Ordner wählen
+Klicke oben auf den Button "Durchsuchen...".
+Wähle den Ordner aus, in dem deine Bilder verstreut liegen (z. B. ein alter Backup-Ordner oder eine SD-Karte).
+Die App sucht automatisch auch in allen Unterordnern!
+
+Schritt 2: Ziel-Ordner prüfen
+Der Zielordner wird automatisch erstellt. Er heißt birds_grabber und liegt direkt neben deinem Skript.
+Du kannst auf "Ziel-Ordner öffnen" klicken, um ihn im Explorer/Finder zu sehen.
+
+Schritt 3: Kopieren starten
+Klicke auf den Button "Kopiervorgang Starten".
+Im Log-Fenster unten siehst du den Fortschritt.
+
+4. Wichtige Funktionen
+Keine Überschreibung: Wenn zwei Bilder gleich heißen (z. B. IMG_001.jpg in zwei verschiedenen Unterordnern), wird das zweite Bild automatisch umbenannt (z. B. in IMG_001_1.jpg). Es gehen keine Daten verloren.
+Abbruch: Du kannst jederzeit auf "Vorgang Stoppen" klicken, um den Prozess zu pausieren/beenden.

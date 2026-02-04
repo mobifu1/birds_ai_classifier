@@ -1,0 +1,27 @@
+'Install dependings:
+cmd > pip install -r requirements.txt
+cmd > pip install "tensorflow==2.12.0" pillow flask matplotlib pandas "numpy<2" tk
+
+Python: 3.10.11
+TensorFlow: 2.12.0
+Betriebssystem: Windows 10/11 (64-bit ist Pflicht für TensorFlow!)
+
+Damit die Nutzung des eigenen trainierten Modells funktioniert, müssen nach dem Training die zwei Dateien in den gleichen Ordner wie das Classifier-Python-Script liegen. Beide Dateien werden durch das Training-Python-Script erzeugt.
+-my_birds_modell.keras
+-model_labels.json
+
+'Start Application:
+cmd > python birds_ai_classifier.py  (nutzt das selbst trainierte Modell -> hervorragende Ergebnisse)
+cmd > pythonw birds_ai_classifier.py (pythonw: das w steht für "Windowed" oder "No-Console")
+
+Parameter Mask_Top & Mask_Bottom:
+Beim Training werden alle Bilder oben und unten geschwärzt um die Zeitstempel auszublenden.
+Bei der Klassifizierung ist es ebenso wichtig die Zeitstempel zu schwärzen.
+Hierfür gibt es die beiden Parameter MASK_TOP oder MASK_BOTTOM im Skript.
+In beiden Scripten sollten die Werte gleich sein.
+
+'Clear Database File:
+clear database > delete birds_stats.db
+
+'Open Browser Statistik:
+http://localhost:5000/

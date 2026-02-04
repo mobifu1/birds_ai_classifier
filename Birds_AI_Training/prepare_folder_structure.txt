@@ -1,0 +1,8 @@
+birds_training_dataset/
+    ├── amsel/
+    │   ├── bild1.jpg
+    │   ├── bild2.jpg
+    ├── blaumeise/
+    │   ├── bild3.jpg
+    ├── hintergrund/  <-- WICHTIG: Bilder ohne Vögel (leerer Futterplatz)
+    └── ...

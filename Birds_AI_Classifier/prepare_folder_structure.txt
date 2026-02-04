@@ -1,0 +1,10 @@
+dein_projekt_ordner/
+│
+├── birds_ai_classifier.py    <-- Dieser Code hier
+├── birds_stats.db            (wird automatisch erstellt)
+│
+└── static/
+    └── bird_icons/
+        ├── Rotkehlchen.png
+        ├── Elster.jpg
+        └── ... (Dateiname muss exakt wie der Vogelname heißen)

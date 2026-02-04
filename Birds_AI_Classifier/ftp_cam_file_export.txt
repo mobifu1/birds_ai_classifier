@@ -1,0 +1,20 @@
+Methode: WLAN / IP-Kamera (Beste Lösung für draußen)
+Das ist die professionelle Methode für ein echtes Vogelhaus im Garten.
+Du kaufst eine wetterfeste Überwachungskamera (z.B. Reolink, TP-Link Tapo, etc.).
+
+Green-Backyard:
+Im Kamera-Menü (Web-Server): Suche nach "Alarm-Einstellungen" für Motion Trigger.
+FTP Upload > FTP-Config: kein TLS > Server-IP + User + Password > PASV-Mode (Passive-Mode)
+Die Kamera sendet das Bild über WiFi zum FTP-Server und speichert es in dem definierten Ordner ab.
+Fokus manuell eingestellt auf 8-25cm.
+
+FTP-Server:
+Nutze Windows-IIS ohne TLS > FTP-Seite einrichten > FTP-Ordner einrichten
+Für das Python Script musst dazu auf deinem FTP-Server den FTP-Ordner im Netzwerk freigeben.
+FTP > PASV-Mode erfordert weitere Port-Freigaben (Range: 5000-5110) auf oberster Baumstruktur > vererbt sich dann
+Firewall > Portfreigabe der gesamten PASV-Range
+Dienste > Restart > Microsoft-FTP Server
+
+Birds_Ai-Classifier-Script:
+Den freigegeben FTP-Server-Ordner zusätzlich als Netzlaufwerk einbinden und diesen als Überwachungsordner nutzen.
+Das Python-Script greift dann neue Bilder sofort ab.

@@ -1,0 +1,34 @@
+Schritt 1: PyInstaller installieren
+Öffne deine Eingabeaufforderung (Terminal / CMD) und installiere das Tool:
+
+Bash
+pip install pyinstaller
+Schritt 2: Die .exe erstellen
+Navigiere im Terminal zu dem Ordner, in dem dein Skript (birds_ai_classifier.py) liegt.
+
+Führe nun folgenden Befehl aus. Ich habe hier spezielle Parameter hinzugefügt, die für dein Programm wichtig sind:
+
+Bash
+pyinstaller --noconsole --onefile --name "birds_ai_classifier" birds_ai_classifier.py
+Was bedeuten die Befehle?
+
+--noconsole: Verhindert, dass sich im Hintergrund immer das schwarze Kommandozeilen-Fenster öffnet (wir haben ja eine GUI).
+
+--onefile: Packt alles (Python, TensorFlow, Pandas, dein Skript) in eine einzige .exe-Datei. (Ohne diesen Befehl erhältst du einen Ordner mit vielen Dateien).
+
+--name "birds_ai_classifier": So heißt die Datei am Ende.
+
+Schritt 3: Warten...
+PyInstaller analysiert nun dein Skript. Da TensorFlow riesig ist, kann dieser Vorgang mehrere Minuten dauern. Ignoriere Warnmeldungen im Terminal, solange am Ende "completed successfully" steht.
+
+Schritt 4: Das Ergebnis finden
+Wenn der Prozess fertig ist, findest du in deinem Projektordner einen neuen Ordner namens dist.
+
+Darin liegt deine Datei: birds_ai_classifier.exe
+
+Fehlerbehebung (Falls die Exe nicht startet)
+Falls sich die .exe sofort wieder schließt oder gar nicht erst öffnet, müssen wir sehen, was der Fehler ist. Erstelle die Datei in diesem Fall ohne den --noconsole Befehl neu:
+
+Bash
+pyinstaller --onefile --name "birds_ai_classifer_debug" birds_ai_classifier.py
+Wenn du diese Version startest, siehst du das schwarze Fenster mit Fehlermeldungen. Das hilft, falls z. B. eine versteckte Bibliothek fehlt.

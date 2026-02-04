@@ -1,0 +1,68 @@
+pip install scipy
+
+Damit die Nutzung des eigenen trainierten Modells funktioniert, müssen nach dem Training die zwei Dateien in den gleichen Ordner wie das Classifier-Python-Script liegen. Beide Dateien werden durch das Training-Python-Script erzeugt.
+-my_birds_modell.keras
+-model_labels.json
+
+Kurze Anleitung zur Kontrolle:
+Starte das Training.
+Es wird ein neuer Ordner "birds_training_dataset_masked_source" erzeugt und mit oben und unten geschwärzten Bildern befüllt.
+Mit den Parametern für MASK_TOP oder MASK_BOTTOM im Skript kann der Bereich eingestellt werden.
+Sobald alles perfekt schwarz abgedeckt ist, lass das Training durchlaufen.
+
+Training-data:
+pro Vogelart werden ca. 50-100 Bilder benötigt damit das Modell vernünftig lernt.
+
+Kurz gesagt:
+Accuracy (Genauigkeit): Je höher, desto besser (Ziel: > 85%).
+Loss (Fehlerwert): Je niedriger, desto besser (Ziel: < 0.4).
+
+Hier ist die detaillierte Aufschlüsselung für dein Projekt (Vogelerkennung mit MobileNet):
+
+1. Accuracy (Genauigkeit)
+Das gibt an, wie viel Prozent der Bilder richtig erkannt wurden.
+0.00 - 0.50 (0-50%): Das Modell rät nur oder ist verwirrt. Etwas stimmt nicht (zu wenig Daten, falsche Einstellungen).
+0.60 - 0.75 (60-75%): "Okay" für den Anfang. Es erkennt die Vögel meistens, macht aber oft Fehler bei ähnlichen Arten (z.B. Amsel Männchen vs. Weibchen).
+0.80 - 0.90 (80-90%): Guter Zielbereich! Das Modell ist praxistauglich.
+> 0.95 (95%+): Exzellent – oder verdächtig. Wenn du 99% erreichst, hast du entweder ein Super-Modell oder (wahrscheinlicher) Overfitting (es hat die Bilder auswendig gelernt).
+
+2. Loss (Verlust / Fehler)
+Der "Loss" ist eine abstrakte Zahl, die angibt, wie "falsch" das Modell liegt. Anders als bei Accuracy ist hier weniger besser.
+> 1.0: Schlecht. Das Modell ist noch sehr unsicher.
+0.5 - 0.8: Solide Basis. Es hat die groben Merkmale verstanden.
+0.2 - 0.4: Sehr gut. Das Modell ist sich seiner Sache sicher.
+< 0.1: Fast perfekt. (Gefahr von Overfitting, wenn val_loss gleichzeitig hoch ist).
+
+Die Goldene Regel: Der Vergleich (Gap)
+Die nackten Zahlen bringen dir nichts, wenn du nicht Training (accuracy) mit Validierung (val_accuracy) vergleichst.
+
+Hier sind drei Szenarien am Ende des Trainings:
+
+Szenario A: Der Traum (Gutes Modell) 🟢
+Plaintext
+Training Accuracy:   0.88  (88%)
+Validation Accuracy: 0.85  (85%)
+----------------------------
+Training Loss:       0.30
+Validation Loss:     0.35
+Urteil: Perfekt. Beide Werte sind hoch und nah beieinander. Das Modell funktioniert auch bei Bildern, die es noch nie gesehen hat.
+
+Szenario B: Der Angeber (Overfitting) 🔴
+Plaintext
+Training Accuracy:   0.99  (99%)  <-- Wow!
+Validation Accuracy: 0.60  (60%)  <-- Autsch.
+----------------------------
+Gap:                 39%   (Riesig!)
+Urteil: Das Modell hat geschummelt. Es kennt die Trainingsbilder auswendig, versagt aber bei neuen Bildern. Lösung: Mehr verschiedene Bilder (andere Hintergründe), mehr Data Augmentation.
+
+Szenario C: Der Anfänger (Underfitting) 🟠
+Plaintext
+Training Accuracy:   0.55
+Validation Accuracy: 0.54
+Urteil: Das Modell ist einfach noch nicht schlau genug. Lösung: Länger trainieren (mehr Epochen), Lernrate verändern oder das Modell darf mehr Layer nutzen (Fine-Tuning weiter öffnen).
+
+Spezialfall bei dir: Die "Feste Kamera"-Falle
+Da du eine feste Futterhaus-Kamera hast, ist es sehr leicht, auf 95-99% Accuracy zu kommen. Warum? Weil der Hintergrund immer gleich ist. Das Modell lernt vielleicht: "Grauer Fleck unten links = Maus". Wenn dann aber mal ein Spatz unten links sitzt, wird er als Maus erkannt.
+
+Mein Tipp: Sei erst zufrieden, wenn die val_accuracy über 85% ist, UND du das Modell mal mit einem Bild getestet hast, wo der Vogel an einer ganz anderen Stelle sitzt (oder bei anderem Wetter).
+
