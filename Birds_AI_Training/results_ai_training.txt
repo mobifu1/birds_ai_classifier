@@ -1,27 +1,14 @@
-Epoch 40: val_accuracy did not improve from 0.82831
-
-346/346 ━━━━━━━━━━━━━━━━━━━━ 88s 254ms/step - accuracy: 0.8682 - loss: 0.4695 - val_accuracy: 0.8253 - val_loss: 0.5947 - learning_rate: 1.0000e-05
-
-Restoring model weights from the end of the best epoch: 38.
-
+Epoch 40: ReduceLROnPlateau reducing learning rate to 1.9999999494757505e-06.
+352/352 ━━━━━━━━━━━━━━━━━━━━ 90s 256ms/step - accuracy: 0.8617 - loss: 0.4781 - val_accuracy: 0.8328 - val_loss: 0.6003 - learning_rate: 1.0000e-05
+Restoring model weights from the end of the best epoch: 36.
 Training abgeschlossen.
 
-
-
 ==================================================
-
           TRAININGS-ANALYSE BERICHT
-
 ==================================================
-
-Genauigkeit Training:                 87.19%
-
-Genauigkeit Validierung:              82.53%
-
-Abweichung (Gap):                     4.66%
-
+Genauigkeit Training:                 86.38%
+Genauigkeit Validierung:              83.28%
+Abweichung (Gap):                     3.10%
 --------------------------------------------------
-
 🟢 GUTES ERGEBNIS! Robustes Modell.
-
-===========================================
+==================================================
