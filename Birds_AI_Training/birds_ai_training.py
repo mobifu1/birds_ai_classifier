@@ -3,6 +3,7 @@ import json
 import sys
 import shutil
 import numpy as np
+import random  # <--- NEU: Für den Zufallsmix
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array, load_img
 from tensorflow.keras.applications import MobileNetV2
@@ -21,8 +22,8 @@ DATASET_CLEAN_PFAD = os.path.join(CURRENT_DIR, DATASET_CLEAN_NAME)
 MODEL_DATEI = "my_birds_modell.keras"
 LABELS_DATEI = "model_labels.json"
 IMG_SIZE = (224, 224)
-BATCH_SIZE = 8
-EPOCHS = 40  # Wir setzen das hoch, EarlyStopping bricht früher ab, falls nötig
+BATCH_SIZE = 8 # Falls Speicher reicht, gerne auf 16 erhöhen
+EPOCHS = 40  
 
 # --- MASK PARAMETER (bezogen auf 224x224 Zielgröße) ---
 MASK_TOP = 14    
@@ -37,51 +38,30 @@ def erstelle_trainings_bericht(history):
     loss = history.history['loss']
     val_loss = history.history['val_loss']
 
-    # Werte der letzten Epoche (bzw. der besten, falls restore_best_weights aktiv war)
     final_acc = acc[-1] * 100
     final_val_acc = val_acc[-1] * 100
-    
-    # Differenz berechnen (Gap)
     gap = final_acc - final_val_acc
     best_val_loss = min(val_loss)
 
     print("\n" + "="*50)
     print("          TRAININGS-ANALYSE BERICHT          ")
     print("="*50)
-    print(f"Genauigkeit Training (Lernerfolg):    {final_acc:.2f}%")
-    print(f"Genauigkeit Validierung (Praxistest): {final_val_acc:.2f}%")
+    print(f"Genauigkeit Training:                 {final_acc:.2f}%")
+    print(f"Genauigkeit Validierung:              {final_val_acc:.2f}%")
     print(f"Abweichung (Gap):                     {gap:.2f}%")
     print("-" * 50)
     
-    print("DIAGNOSE:")
-    
-    # 1. Check auf Overfitting
+    # Diagnose Logik
     if gap > 15:
-        print("🔴 OVERFITTING ERKANNT!")
-        print("   Das Modell lernt die Bilder auswendig, erkennt aber keine neuen.")
-        print("   -> LÖSUNG: Mehr 'Data Augmentation', mehr Dropout oder MEHR BILDER sammeln.")
-    
-    # 2. Check auf Underfitting
+        print("🔴 OVERFITTING ERKANNT! (Gap zu groß)")
     elif final_acc < 60:
-        print("🟠 UNDERFITTING / ZU WENIG TRAINING")
-        print("   Das Modell hat die Zusammenhänge noch nicht verstanden.")
-        print("   -> LÖSUNG: Länger trainieren oder Lernrate prüfen.")
-        
-    # 3. Check auf schlechter werdende Validierung
+        print("🟠 UNDERFITTING (Lernt noch nicht richtig)")
     elif val_loss[-1] > best_val_loss + 0.2:
-        print("⚠️ WARNUNG: VALIDATION LOSS STEIGT")
-        print("   Das Modell wurde zum Ende hin schlechter bei neuen Daten.")
-        print("   (Keine Sorge: Die beste Version wurde dank Checkpoint bereits gespeichert).")
-
-    # 4. Gutes Ergebnis
+        print("⚠️ WARNUNG: Validation Loss steigt an (Overfitting beginnt)")
     elif final_val_acc > 75 and gap < 10:
-        print("🟢 GUTES ERGEBNIS!")
-        print("   Das Modell ist robust und generalisiert gut.")
-    
+        print("🟢 GUTES ERGEBNIS! Robustes Modell.")
     else:
-        print("⚪ ERGEBNIS OKAY")
-        print("   Das Training war stabil. Sammle weiter Bilder für bessere Werte.")
-        
+        print("⚪ ERGEBNIS OKAY.")
     print("="*50 + "\n")
 
 def apply_mask_to_array(img_array):
@@ -92,16 +72,20 @@ def apply_mask_to_array(img_array):
     return img_array
 
 def prepare_masked_dataset():
-    """Erstellt eine maskierte Kopie des Datensatzes."""
+    """
+    Erstellt eine maskierte Kopie des Datensatzes UND mischt die Dateinamen.
+    Das Mischen ist wichtig, damit 'validation_split' zufällige Bilder wählt 
+    und nicht nur die letzten Aufnahmen eines Tages.
+    """
     if os.path.exists(DATASET_CLEAN_PFAD):
+        print(f"Lösche alten Datensatz {DATASET_CLEAN_NAME} für Neu-Mischung...")
         try:
             shutil.rmtree(DATASET_CLEAN_PFAD)
         except OSError as e:
-            print(f"Warnung beim Bereinigen: {e}")
+            print(f"Warnung: {e}")
             
     os.makedirs(DATASET_CLEAN_PFAD, exist_ok=True)
-
-    print(f"Erstelle maskierten Datensatz in {DATASET_CLEAN_NAME}...")
+    print(f"Erstelle gemischten & maskierten Datensatz...")
     
     count = 0
     for subdir, dirs, files in os.walk(DATASET_PFAD):
@@ -112,14 +96,24 @@ def prepare_masked_dataset():
                 os.makedirs(target_subdir, exist_ok=True)
                 
                 try:
+                    # 1. Bild laden und maskieren
                     img = load_img(os.path.join(subdir, file), target_size=IMG_SIZE)
                     img_array = img_to_array(img)
                     img_array = apply_mask_to_array(img_array)
-                    array_to_img(img_array).save(os.path.join(target_subdir, file))
+                    
+                    # 2. NEU: Zufälligen Präfix generieren (z.B. "84921_")
+                    # Das zwingt den Generator später, die Bilder zufällig zu sortieren
+                    random_prefix = str(random.randint(10000, 99999))
+                    new_filename = f"{random_prefix}_{file}"
+                    
+                    # 3. Speichern mit neuem Namen
+                    save_path = os.path.join(target_subdir, new_filename)
+                    array_to_img(img_array).save(save_path)
                     count += 1
                 except Exception as e:
                     print(f"Fehler bei Bild {file}: {e}")
-    print(f"Fertig. {count} Bilder vorbereitet.")
+    
+    print(f"Fertig. {count} Bilder vorbereitet und zufällig benannt.")
 
 def check_data_before_start():
     if not os.path.exists(DATASET_PFAD):
@@ -129,10 +123,11 @@ def check_data_before_start():
 def train():
     check_data_before_start()
     
-    # 1. Maskierung durchführen
+    # 1. Maskierung & Mischen durchführen
+    # Dies wird jetzt bei jedem Start neu gemacht, damit wir immer einen frischen Mix haben
     prepare_masked_dataset()
 
-    # 2. Verbesserte Augmentation (Wichtig für kleine Datensätze)
+    # 2. Generator Setup
     datagen = ImageDataGenerator(
         preprocessing_function=tf.keras.applications.mobilenet_v2.preprocess_input,
         rotation_range=30,      
@@ -143,10 +138,10 @@ def train():
         brightness_range=[0.8, 1.2],
         horizontal_flip=True,
         fill_mode='nearest',
-        validation_split=0.2
+        validation_split=0.2 # Nimmt jetzt zufällige 20% dank der Umbenennung
     )
 
-    print("Lade vor-maskierte Bilder in Generator...")
+    print("Lade Bilder in Generator...")
     train_generator = datagen.flow_from_directory(
         DATASET_CLEAN_PFAD,
         target_size=IMG_SIZE,
@@ -174,10 +169,9 @@ def train():
         json.dump(labels, f)
     print(f"Klassen gefunden: {len(labels)}")
 
-    # 3. Modell Aufbau mit Fine-Tuning
+    # 3. Modell Aufbau
     base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
     
-    # Fine-Tuning aktivieren: Die letzten 30 Layer dürfen lernen
     base_model.trainable = True
     fine_tune_at = len(base_model.layers) - 30
     for layer in base_model.layers[:fine_tune_at]:
@@ -185,29 +179,24 @@ def train():
 
     x = base_model.output
     x = GlobalAveragePooling2D()(x)
-    x = Dropout(0.4)(x) # 40% Dropout gegen Overfitting
+    x = Dropout(0.4)(x) 
     predictions = Dense(len(labels), activation='softmax')(x)
 
     model = Model(inputs=base_model.input, outputs=predictions)
 
-    # Niedrige Lernrate für Fine-Tuning
     model.compile(optimizer=Adam(learning_rate=1e-5), 
                   loss='categorical_crossentropy', 
                   metrics=['accuracy'])
 
-    # 4. Callbacks (Der Autopilot)
+    # 4. Callbacks
     callbacks_list = [
-        # Stoppt, wenn val_loss sich 8 Epochen nicht verbessert
         EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=True, verbose=1),
-        # Speichert NUR das beste Modell
         ModelCheckpoint(MODEL_DATEI, monitor='val_accuracy', save_best_only=True, mode='max', verbose=1),
-        # Hilft aus Sackgassen
         ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=4, min_lr=1e-7, verbose=1)
     ]
 
-    print("Starte erweitertes Training (Fine-Tuning)...")
+    print("Starte Training mit Random Split...")
     
-    # Training starten und History speichern
     history = model.fit(
         train_generator, 
         epochs=EPOCHS, 
@@ -216,12 +205,7 @@ def train():
     )
 
     print("Training abgeschlossen.")
-    
-    # 5. Bericht erstellen
     erstelle_trainings_bericht(history)
-
-    # Hinweis: Wir speichern hier nicht nochmal manuell, da ModelCheckpoint 
-    # das bereits erledigt hat (nur das BESTE Modell wird behalten).
     print(f"Das beste Modell liegt unter: {MODEL_DATEI}")
 
 if __name__ == "__main__":
