@@ -1,15 +1,16 @@
 import os
 import time
 import threading
+import multiprocessing  # Für Prozess-Trennung
 import sqlite3
 import webbrowser
 import datetime
 from pathlib import Path
 import io
 import base64
-import json  # Für die Labels-Datei
+import json
 
-# --- WICHTIG: Matplotlib Einstellung für Threads ---
+# --- WICHTIG: Matplotlib Einstellung für Threads/Prozesse ---
 import matplotlib
 matplotlib.use('Agg') 
 import matplotlib.pyplot as plt
@@ -35,7 +36,7 @@ DB_FILE = "birds_stats.db"
 FLASK_PORT = 5000
 CHECK_INTERVAL_SECONDS = 5 
 
-# --- MASK PARAMETER (Synchron zum Training) ---
+# --- MASK PARAMETER ---
 MASK_TOP = 14  
 MASK_BOTTOM = 10
 
@@ -63,15 +64,21 @@ def get_dir_size_mb(folder, recursive=False):
         print(f"Fehler bei Größenberechnung: {e}")
         return 0.0
 
-# --- DATENBANK SETUP ---
+# --- DATENBANK SETUP (Optimiert) ---
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     try:
+        # WAL-Modus für gleichzeitigen Zugriff
+        c.execute('PRAGMA journal_mode=WAL;')
+        
         c.execute('''CREATE TABLE IF NOT EXISTS detections 
                      (id INTEGER PRIMARY KEY, filename TEXT UNIQUE, species TEXT, timestamp TEXT, confidence REAL)''')
-    except:
-        pass 
+        
+        # Index für Performance
+        c.execute('CREATE INDEX IF NOT EXISTS idx_species ON detections(species);')
+    except Exception as e:
+        print(f"DB Init Fehler: {e}") 
     conn.commit()
     conn.close()
 
@@ -102,54 +109,29 @@ class BirdAI:
         self.use_custom = False
         self.model = MobileNetV2(weights='imagenet')
         self.translations = {
-            'robin': 'Rotkehlchen', 'goldfinch': 'Stieglitz', 'brambling': 'Bergfink',
-            'bullfinch': 'Gimpel', 'house_finch': 'Karmingimpel', 'chickadee': 'Meise',
-            'magpie': 'Elster', 'jay': 'Eichelhäher', 'water_ouzel': 'Wasseramsel',
-            'indigo_bunting': 'Indigofink', 'junco': 'Junco', 'lark': 'Lerche',
-            'bulbul': 'Bülbül', 'sparrow': 'Sperling', 'woodpecker': 'Specht',
-            'dove': 'Taube', 'raven': 'Rabe', 'crow': 'Krähe', 'kite': 'Milan',
-            'bald_eagle': 'Seeadler', 'vulture': 'Geier', 'great_grey_owl': 'Uhu',
-            'horned_owl': 'Uhu', 'hawk': 'Habicht', 'drake': 'Ente', 'goose': 'Gans',
-            'black_swan': 'Trauerschwan', 'white_stork': 'Weißstorch',
-            'black_stork': 'Schwarzstorch', 'spoonbill': 'Löffler', 'flamingo': 'Flamingo',
-            'american_coot': 'Blässhuhn', 'european_gallinule': 'Teichhuhn',
-            'pelican': 'Pelikan', 'king_penguin': 'Königspinguin', 'albatross': 'Albatros',
-            'oystercatcher': 'Austernfischer', 'cock': 'Hahn', 'hen': 'Huhn',
-            'partridge': 'Rebhuhn', 'black_grouse': 'Birkhuhn', 'ptarmigan': 'Schneehuhn',
-            'peacock': 'Pfau', 'ostrich': 'Strauß', 'macaw': 'Ara', 'lorikeet': 'Lori',
-            'toucan': 'Tukan', 'bee_eater': 'Bienenfresser', 'hummingbird': 'Kolibri',
-            'coucal': 'Kuckuck', 'red_fox': 'Rotfuchs', 'badger': 'Dachs',
-            'squirrel': 'Eichhörnchen', 'hare': 'Hase', 'hedgehog': 'Igel',
-            'blackbird': 'Amsel', 'titmouse': 'Meise'
+            'robin': 'Rotkehlchen', 'goldfinch': 'Stieglitz'
         }
 
     def analyze_image(self, img_path):
         try:
-            # 1. Bild laden
             img = tf_image.load_img(img_path, target_size=(224, 224))
             x = tf_image.img_to_array(img)
             
-            # --- MASKIERUNG ANWENDEN ---
-            # Oben schwärzen
+            # Maskierung
             x[:MASK_TOP, :, :] = 0
-            # Unten schwärzen
             h = x.shape[0]
             x[h-MASK_BOTTOM:, :, :] = 0
             
-            # --- DEBUG-KONTROLLE (KORRIGIERT) ---
+            # Debug
             debug_dir = "debug_live_masking"
-            
-            # Schritt 1: Ordner sicherstellen
             if not os.path.exists(debug_dir):
                 os.makedirs(debug_dir)
             
-            # Schritt 2: Bild speichern, falls noch nicht vorhanden
             debug_file = os.path.join(debug_dir, "live_check.png")
             if not os.path.exists(debug_file):
                 tf_image.array_to_img(x).save(debug_file)
-                print(f"DEBUG: Kontrollbild gespeichert in {debug_file}")
 
-            # 2. KI-Preprocessing
+            # KI
             x = np.expand_dims(x, axis=0)
             x = preprocess_input(x)
             preds = self.model.predict(x, verbose=0)
@@ -166,7 +148,7 @@ class BirdAI:
                 translated_label = self.translations.get(english_label, english_label)
                 return translated_label.replace('_', ' ').title(), confidence
         except Exception as e:
-            print(f"Fehler in analyze_image bei {img_path}: {e}") # Fehler sichtbar machen
+            print(f"Fehler in analyze_image bei {img_path}: {e}")
             return "Fehler", 0.0
 
 # --- HINTERGRUND ÜBERWACHUNG ---
@@ -182,14 +164,11 @@ class FolderMonitor:
         self.thread = None
 
     def start(self, folder_path, recursive=False): 
-        if not folder_path:
-            return
+        if not folder_path: return
         self.folder_path = folder_path
         self.recursive = recursive
-        
         global CURRENT_MONITOR_PATH
         CURRENT_MONITOR_PATH = folder_path
-        
         self.running = True
         
         if self.ai is None:
@@ -216,12 +195,12 @@ class FolderMonitor:
                 print(f"Fehler im Loop: {e}")
                 
             for _ in range(CHECK_INTERVAL_SECONDS):
-                if not self.running: 
-                    break
+                if not self.running: break
                 time.sleep(1)
 
     def scan_folder(self):
-        conn = sqlite3.connect(DB_FILE)
+        # Timeout verhindert "Database locked"
+        conn = sqlite3.connect(DB_FILE, timeout=10)
         c = conn.cursor()
         
         try:
@@ -246,14 +225,12 @@ class FolderMonitor:
             self.log_callback(f"{len(new_files)} neue Bilder. Filter ab {current_threshold}%...")
             
             for file_path in new_files:
-                if not self.running: 
-                    break
+                if not self.running: break
                 
                 species, conf = self.ai.analyze_image(str(file_path))
                 conf_percent = int(conf * 100)
                 timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                # --- VERBESSERUNG: Duplikate abfangen ---
                 try:
                     if conf_percent >= current_threshold:
                         c.execute("INSERT INTO detections (filename, species, timestamp, confidence) VALUES (?, ?, ?, ?)",
@@ -266,7 +243,6 @@ class FolderMonitor:
                         conn.commit()
                         self.log_callback(f"[{file_path.name}] ❌ {species} ({conf_percent}%) -> Ignoriert (zu unsicher)")
                 except sqlite3.IntegrityError:
-                    # Fängt "UNIQUE constraint failed" ab, falls das Bild zwischenzeitlich schon existiert
                     print(f"Duplikat übersprungen: {file_path.name}")
         
         conn.close()
@@ -277,7 +253,9 @@ app = Flask(__name__)
 @app.route('/')
 def dashboard():
     chart_type = request.args.get('type', 'donut')
-    conn = sqlite3.connect(DB_FILE)
+    
+    # Timeout für Webserver-Stabilität
+    conn = sqlite3.connect(DB_FILE, timeout=10)
     try:
         df = pd.read_sql_query("SELECT species, COUNT(*) as count FROM detections GROUP BY species", conn)
         if not df.empty:
@@ -287,8 +265,6 @@ def dashboard():
     finally:
         conn.close()
         
-    folder_size_str = "Nicht aktiv"
-    folder_size_color = "gray"
     total_count = df['count'].sum() if not df.empty else 0
     unknown_percent_str = "0.0 %"
     if total_count > 0 and not df.empty:
@@ -298,12 +274,7 @@ def dashboard():
             pct = (u_count / total_count) * 100
             unknown_percent_str = f"{pct:.1f} %"
     
-    if CURRENT_MONITOR_PATH:
-        size_mb = get_dir_size_mb(CURRENT_MONITOR_PATH, recursive=True) 
-        folder_size_str = f"{size_mb:.2f} MB"
-        if size_mb > 500: folder_size_color = "red"
-        elif size_mb > 100: folder_size_color = "orange"
-        else: folder_size_color = "green"
+    # Speicherplatzanzeige wurde hier entfernt (Logik gelöscht)
 
     icon_map = {}
     static_folder = os.path.join(app.root_path, 'static', 'bird_icons')
@@ -328,7 +299,7 @@ def dashboard():
             centre_circle = plt.Circle((0,0),0.70,fc='white')
             fig.gca().add_artist(centre_circle)
             ax.axis('equal') 
-            ax.set_title('Verteilung der Arten')
+            ax.set_title('Verteilung der Arten', pad=20)
             plt.setp(autotexts, size=10, weight="bold", color="white")
         plt.tight_layout()
         img = io.BytesIO()
@@ -366,13 +337,16 @@ def dashboard():
     <body>
         <div class="container">
             <h1>📊 Vogel-Beobachtungs-Statistik</h1>
-            <div class="status-box">Speicherverbrauch Ordner: <span style="color: {{ size_color }}">{{ size_str }}</span></div>
+            
             {% if chart_url %}
                 <div class="chart-toggle">
                     <a href="/?type=donut" class="toggle-btn {% if request.args.get('type') != 'bar' %}active{% endif %}">🍩 Donut</a>
                     <a href="/?type=bar" class="toggle-btn {% if request.args.get('type') == 'bar' %}active{% endif %}">📊 Balken</a>
                 </div>
                 <img src="data:image/png;base64,{{ chart_url }}" alt="Diagramm" style="max-width:100%; height:auto; border-radius:8px;">
+                
+                <br><br>
+                
                 <h2>Detaillierte Liste</h2>
                 <table>
                     <thead><tr><th>Vogelart</th><th style="text-align: right;">Anzahl</th></tr></thead>
@@ -406,7 +380,7 @@ def dashboard():
     </body>
     </html>
     """
-    return render_template_string(html, chart_url=chart_url, df=df, size_str=folder_size_str, size_color=folder_size_color, icon_map=icon_map, total_count=total_count, unknown_percent=unknown_percent_str)
+    return render_template_string(html, chart_url=chart_url, df=df, icon_map=icon_map, total_count=total_count, unknown_percent=unknown_percent_str)
 
 def run_flask():
     app.run(port=FLASK_PORT, debug=False, use_reloader=False)
@@ -501,7 +475,7 @@ class AppGUI:
         confirm = messagebox.askyesno("Warnung", "Alle Daten löschen?")
         if confirm:
             try:
-                conn = sqlite3.connect(DB_FILE)
+                conn = sqlite3.connect(DB_FILE, timeout=10)
                 c = conn.cursor()
                 c.execute("DELETE FROM detections")
                 conn.commit()
@@ -524,8 +498,11 @@ class AppGUI:
 
 if __name__ == "__main__":
     init_db()
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
+    
+    # Flask Prozess Start
+    flask_process = multiprocessing.Process(target=run_flask, daemon=True)
+    flask_process.start()
+    
     root = tk.Tk()
     app_gui = AppGUI(root)
     root.mainloop()
