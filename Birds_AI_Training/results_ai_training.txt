@@ -1,14 +1,14 @@
-Epoch 40: ReduceLROnPlateau reducing learning rate to 1.9999999494757505e-06.
-352/352 ━━━━━━━━━━━━━━━━━━━━ 90s 256ms/step - accuracy: 0.8617 - loss: 0.4781 - val_accuracy: 0.8328 - val_loss: 0.6003 - learning_rate: 1.0000e-05
-Restoring model weights from the end of the best epoch: 36.
+Epoch 40: val_accuracy improved from 0.83472 to 0.83806, saving model to my_birds_modell.keras
+312/312 ━━━━━━━━━━━━━━━━━━━━ 81s 259ms/step - accuracy: 0.8775 - loss: 0.4663 - val_accuracy: 0.8381 - val_loss: 0.5593 - learning_rate: 1.0000e-05
+Restoring model weights from the end of the best epoch: 40.
 Training abgeschlossen.
 
 ==================================================
           TRAININGS-ANALYSE BERICHT
 ==================================================
-Genauigkeit Training:                 86.38%
-Genauigkeit Validierung:              83.28%
-Abweichung (Gap):                     3.10%
+Genauigkeit Training:                 86.83%
+Genauigkeit Validierung:              83.81%
+Abweichung (Gap):                     3.02%
 --------------------------------------------------
 🟢 GUTES ERGEBNIS! Robustes Modell.
 ==================================================
