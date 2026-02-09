@@ -1,7 +1,12 @@
-# Ignoriere den Download-Ordner mit den Rohdaten
+# Ignoriere Download-Ordner mit den Rohdaten
 best_of/
 birds_grabber/
 birds_training_dataset/
-birds_training_dataset_masked_source/
+birds_training_dataset_shuffled_temp/
 neue_bilder_downloads/
 new_birds/
+
+# Ignoriere Modell-Files mit den Rohdaten
+my_birds_modell_400.keras
+my_birds_modell.keras
+
