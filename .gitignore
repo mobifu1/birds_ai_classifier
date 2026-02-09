@@ -7,6 +7,7 @@ neue_bilder_downloads/
 new_birds/
 
 # Ignoriere Modell-Files mit den Rohdaten
-my_birds_modell_400.keras
-my_birds_modell.keras
+*.keras
+*.h5
+
 
