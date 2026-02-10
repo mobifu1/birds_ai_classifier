@@ -5,8 +5,9 @@ Du kaufst eine wetterfeste Überwachungskamera (z.B. Reolink, TP-Link Tapo, etc.
 Green-Backyard:
 Im Kamera-Menü (Web-Server): Suche nach "Alarm-Einstellungen" für Motion Trigger.
 FTP Upload > FTP-Config: kein TLS > Server-IP + User + Password > PASV-Mode (Passive-Mode)
-Die Kamera sendet das Bild über WiFi zum FTP-Server und speichert es in dem definierten Ordner ab.
+Die Kamera sendet das Bild 800x448 BxH über WiFi zum FTP-Server und speichert es in dem definierten Ordner ab.
 Fokus manuell eingestellt auf 8-25cm.
+
 
 FTP-Server:
 Nutze Windows-IIS ohne TLS > FTP-Seite einrichten > FTP-Ordner einrichten

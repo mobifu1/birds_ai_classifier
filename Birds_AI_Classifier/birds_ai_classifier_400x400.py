@@ -87,7 +87,7 @@ def init_db():
 # --- KI KLASSIFIZIERUNG ---
 class BirdAI:
     def __init__(self):
-        self.custom_model_path = "my_birds_modell_400.keras"
+        self.custom_model_path = "my_birds_modell_400x400.keras"
         self.labels_path = "model_labels.json"
         self.use_custom = False
         self.labels_map = {}
@@ -395,7 +395,7 @@ def run_flask():
 class AppGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Birds-AI-Classifier (Deutsch)")
+        self.root.title("Birds-AI-Classifier (400x400)")
         self.root.geometry("600x680") 
         
         self.monitor = FolderMonitor(self.update_log, 

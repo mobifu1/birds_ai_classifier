@@ -20,7 +20,7 @@ DATASET_TEMP_NAME = "birds_training_dataset_shuffled_temp"
 DATASET_PFAD = os.path.join(CURRENT_DIR, DATASET_NAME)
 DATASET_TEMP_PFAD = os.path.join(CURRENT_DIR, DATASET_TEMP_NAME)
 
-MODEL_DATEI = "my_birds_modell_400.keras"
+MODEL_DATEI = "my_birds_modell_400x400.keras"
 LABELS_DATEI = "model_labels.json"
 
 # --- ÄNDERUNG: Jetzt auf 400x400 gesetzt ---

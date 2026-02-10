@@ -1,14 +1,24 @@
-Epoch 40: val_accuracy improved from 0.82837 to 0.83888, saving model to my_birds_modell.keras
-299/299 ━━━━━━━━━━━━━━━━━━━━ 46s 153ms/step - accuracy: 0.8637 - loss: 0.4910 - val_accuracy: 0.8389 - val_loss: 0.5748 - learning_rate: 1.0000e-05
-Restoring model weights from the end of the best epoch: 40.
-Training abgeschlossen.
-
+400x400:
 ==================================================
           TRAININGS-ANALYSE BERICHT
 ==================================================
-Genauigkeit Training:                 86.37%
-Genauigkeit Validierung:              83.89%
+Genauigkeit Training:                 96.37%
+Genauigkeit Validierung:              93.89%
 Abweichung (Gap):                     2.49%
 --------------------------------------------------
 🟢 GUTES ERGEBNIS! Robustes Modell.
 ==================================================
+
+
+
+800x448:
+==================================================
+          TRAININGS-ANALYSE BERICHT
+==================================================
+Genauigkeit Training:                 95.59%
+Genauigkeit Validierung:              91.71%
+Abweichung (Gap):                     3.89%
+--------------------------------------------------
+🟢 GUTES ERGEBNIS! Robustes Modell.
+==================================================
+
