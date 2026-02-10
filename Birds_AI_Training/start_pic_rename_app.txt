@@ -1,0 +1,7 @@
+Umbenennung aller Dataset-Trainingsbilder in einem Step:
+
+Struktur: Rekursiv (Hauptordner + alle Unterordner).
+
+Reset: In jedem Unterordner beginnt der Zähler wieder bei 0001.
+
+Namensschema: 0001 + _ + Ordnername + .jpg (Das Ergebnis sieht dann z. B. so aus: 0001_Urlaub.jpg).
