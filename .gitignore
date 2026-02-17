@@ -1,5 +1,7 @@
 # Ignoriere Download-Ordner mit den Rohdaten
 best_of/
+build/
+dist/
 pic_grabber/
 birds_training_dataset/
 birds_training_dataset_shuffled_temp/
@@ -9,5 +11,6 @@ new_birds/
 # Ignoriere Modell-Files mit den Rohdaten
 *.keras
 *.h5
+*.spec
 
 
