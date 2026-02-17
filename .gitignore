@@ -1,6 +1,6 @@
 # Ignoriere Download-Ordner mit den Rohdaten
 best_of/
-birds_grabber/
+pic_grabber/
 birds_training_dataset/
 birds_training_dataset_shuffled_temp/
 neue_bilder_downloads/

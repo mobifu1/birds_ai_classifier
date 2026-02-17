@@ -9,6 +9,13 @@ from pathlib import Path
 import io
 import base64
 import json
+import re  # Für Namens-Erkennung (Regex)
+import random # Für 6-stellige Zufallszahl
+import gc # Garbage Collection für Speicher-Freigabe
+import shutil # Zum Kopieren der Bilder
+
+# --- NEU: Production Server Import ---
+from waitress import serve
 
 # --- WICHTIG: Matplotlib Einstellung für Threads/Prozesse ---
 import matplotlib
@@ -17,7 +24,7 @@ import matplotlib.pyplot as plt
 
 # GUI & System
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, simpledialog
 
 # Web & Data
 from flask import Flask, render_template_string, request, url_for
@@ -35,19 +42,44 @@ import numpy as np
 
 # --- KONFIGURATION ---
 DB_FILE = "birds_stats.db"
+
+# Greylist & Blacklist
+GREYLIST_FILE = "greylist.json" 
+BLACKLIST_FILE = "blacklist.json" 
+
+SETTINGS_FILE = "settings.json" 
 FLASK_PORT = 5000
 CHECK_INTERVAL_SECONDS = 5 
+STATIC_FOLDER = "static" 
+LAST_IMG_NAME = "last_detection.jpg" 
 
 # --- MASK PARAMETER ---
 MASK_TOP = 0  
 MASK_BOTTOM = 0
 
-# Globale Variable für den Pfad
-CURRENT_MONITOR_PATH = None
+# --- HELFER: SETTINGS (Threshold & Pfad) SPEICHERN/LADEN ---
+def load_settings():
+    """Lädt alle Einstellungen als Dictionary."""
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+def save_setting(key, value):
+    """Speichert einen einzelnen Wert in die settings.json, ohne andere zu überschreiben."""
+    data = load_settings()
+    data[key] = value
+    try:
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"Fehler beim Speichern der Settings: {e}")
 
 # --- HELFER: ORDNERGRÖSSE BERECHNEN ---
 def get_dir_size_mb(folder, recursive=False):
-    """Berechnet die Größe eines Ordners in Megabyte."""
     if not folder or not os.path.exists(folder):
         return 0.0
     total_size = 0
@@ -66,28 +98,76 @@ def get_dir_size_mb(folder, recursive=False):
         print(f"Fehler bei Größenberechnung: {e}")
         return 0.0
 
-# --- DATENBANK SETUP (Optimiert) ---
+# --- HELFER: LISTEN LADEN/SPEICHERN (Greylist & Blacklist) ---
+
+# 1. GREYLIST (Löschen + DB Eintrag)
+def load_greylist():
+    # Migration: Falls alte blacklist.json existiert, aber keine greylist.json, benenne sie um
+    if os.path.exists("blacklist.json") and not os.path.exists(GREYLIST_FILE):
+        try:
+            os.rename("blacklist.json", GREYLIST_FILE)
+            print("Info: Alte blacklist.json wurde zu greylist.json migriert.")
+        except Exception as e:
+            print(f"Fehler bei Migration: {e}")
+
+    if os.path.exists(GREYLIST_FILE):
+        try:
+            with open(GREYLIST_FILE, 'r', encoding='utf-8') as f:
+                return set(json.load(f))
+        except:
+            return set()
+    return set()
+
+def save_greylist(greylist_set):
+    try:
+        with open(GREYLIST_FILE, 'w', encoding='utf-8') as f:
+            json.dump(list(greylist_set), f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Fehler beim Speichern der Greylist: {e}")
+
+# 2. BLACKLIST (Löschen ohne DB Eintrag)
+def load_blacklist():
+    # Standardwerte, falls keine Datei existiert
+    defaults = {"Hintergrund", "Unbekannt"}
+    
+    if os.path.exists(BLACKLIST_FILE):
+        try:
+            with open(BLACKLIST_FILE, 'r', encoding='utf-8') as f:
+                return set(json.load(f))
+        except:
+            return defaults
+    return defaults
+
+def save_blacklist(blacklist_set):
+    try:
+        with open(BLACKLIST_FILE, 'w', encoding='utf-8') as f:
+            json.dump(list(blacklist_set), f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Fehler beim Speichern der Blacklist: {e}")
+
+
+# --- DATENBANK SETUP ---
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     try:
-        # WAL-Modus für gleichzeitigen Zugriff
         c.execute('PRAGMA journal_mode=WAL;')
-        
         c.execute('''CREATE TABLE IF NOT EXISTS detections 
                      (id INTEGER PRIMARY KEY, filename TEXT UNIQUE, species TEXT, timestamp TEXT, confidence REAL)''')
-        
-        # Index für Performance
         c.execute('CREATE INDEX IF NOT EXISTS idx_species ON detections(species);')
+        # Optimierung für schnelle Abfragen auf Dateinamen
+        c.execute('CREATE INDEX IF NOT EXISTS idx_filename ON detections(filename);') 
     except Exception as e:
         print(f"DB Init Fehler: {e}") 
     conn.commit()
     conn.close()
 
+    if not os.path.exists(STATIC_FOLDER):
+        os.makedirs(STATIC_FOLDER)
+
 # --- KI KLASSIFIZIERUNG ---
 class BirdAI:
     def __init__(self):
-        # --- ÄNDERUNG: Neuer Modellname passend zum 800x448 Training ---
         self.custom_model_path = "my_birds_modell_800x448.keras"
         self.labels_path = "model_labels.json"
         self.use_custom = False
@@ -113,34 +193,21 @@ class BirdAI:
         print("Lade Standard-Modell (InceptionV3)...")
         self.model = InceptionV3(weights='imagenet')
         self.translations = {
-            'robin': 'Rotkehlchen', 'goldfinch': 'Stieglitz'
+            'robin': 'Rotkehlchen', 'goldfinch': 'Stieglitz', 
+            'house_sparrow': 'Haussperling', 'magpie': 'Elster',
+            'black_grouse': 'Birkhuhn', 'jay': 'Eichelhäher'
         }
 
     def analyze_image(self, img_path):
         try:
-            # --- ÄNDERUNG: Jetzt auf 800x448 (Breite 800, Höhe 448) ---
-            # Keras load_img nutzt target_size=(height, width) -> also (448, 800)
             img = tf_image.load_img(img_path, target_size=(448, 800))
             x = tf_image.img_to_array(img)
             
-            # Maskierung
             x[:MASK_TOP, :, :] = 0
             h = x.shape[0]
             x[h-MASK_BOTTOM:, :, :] = 0
             
-            # Debug
-            debug_dir = "debug_live_masking"
-            if not os.path.exists(debug_dir):
-                os.makedirs(debug_dir)
-            
-            debug_file = os.path.join(debug_dir, "live_check.png")
-            if not os.path.exists(debug_file):
-                tf_image.array_to_img(x).save(debug_file)
-
-            # KI
             x = np.expand_dims(x, axis=0)
-            
-            # InceptionV3 Preprocessing
             x = preprocess_input(x)
             
             preds = self.model.predict(x, verbose=0)
@@ -157,12 +224,14 @@ class BirdAI:
                 translated_label = self.translations.get(english_label, english_label)
                 return translated_label.replace('_', ' ').title(), confidence
         except Exception as e:
-            print(f"Fehler in analyze_image bei {img_path}: {e}")
             return "Fehler", 0.0
 
 # --- HINTERGRUND ÜBERWACHUNG ---
 class FolderMonitor:
-    def __init__(self, update_log_callback, get_threshold_callback, update_size_callback):
+    def __init__(self, update_log_callback, get_threshold_callback, update_size_callback, 
+                 get_rename_callback, get_delete_callback, 
+                 get_greylist_active_callback, get_greylist_callback,
+                 get_blacklist_callback): 
         self.running = False
         self.folder_path = ""
         self.recursive = False 
@@ -170,14 +239,20 @@ class FolderMonitor:
         self.log_callback = update_log_callback
         self.get_threshold = get_threshold_callback
         self.update_size_callback = update_size_callback
+        self.get_rename_enabled = get_rename_callback
+        self.get_delete_enabled = get_delete_callback
+        
+        self.get_greylist_active = get_greylist_active_callback
+        self.get_greylist = get_greylist_callback
+        
+        self.get_blacklist = get_blacklist_callback
+        
         self.thread = None
 
     def start(self, folder_path, recursive=False): 
         if not folder_path: return
         self.folder_path = folder_path
         self.recursive = recursive
-        global CURRENT_MONITOR_PATH
-        CURRENT_MONITOR_PATH = folder_path
         self.running = True
         
         if self.ai is None:
@@ -188,8 +263,6 @@ class FolderMonitor:
 
     def stop(self):
         self.running = False
-        global CURRENT_MONITOR_PATH
-        CURRENT_MONITOR_PATH = None
 
     def loop(self):
         mode_str = "rekursiv" if self.recursive else "nur Hauptebene"
@@ -208,51 +281,149 @@ class FolderMonitor:
                 time.sleep(1)
 
     def scan_folder(self):
-        # Timeout verhindert "Database locked"
         conn = sqlite3.connect(DB_FILE, timeout=10)
         c = conn.cursor()
         
-        try:
-            c.execute("SELECT filename FROM detections")
-            processed_files = {row[0] for row in c.fetchall()}
-        except:
-            processed_files = set()
-        
         extensions = ['*.jpg', '*.jpeg', '*.JPG', '*.png']
-        files_found = []
+        files_found_iterators = []
+        
+        path_obj = Path(self.folder_path)
+        
         for ext in extensions:
             if self.folder_path:
                 if self.recursive:
-                    files_found.extend(Path(self.folder_path).rglob(ext))
+                    files_found_iterators.append(path_obj.rglob(ext))
                 else:
-                    files_found.extend(Path(self.folder_path).glob(ext))
-
-        new_files = [f for f in files_found if f.name not in processed_files]
-
-        if new_files:
-            current_threshold = self.get_threshold() 
-            self.log_callback(f"{len(new_files)} neue Bilder. Filter ab {current_threshold}%...")
-            
-            for file_path in new_files:
+                    files_found_iterators.append(path_obj.glob(ext))
+        
+        new_files = []
+        for iterator in files_found_iterators:
+            for file_path in iterator:
                 if not self.running: break
                 
-                species, conf = self.ai.analyze_image(str(file_path))
+                try:
+                    c.execute("SELECT 1 FROM detections WHERE filename = ? LIMIT 1", (file_path.name,))
+                    if c.fetchone() is None:
+                        new_files.append(file_path)
+                except Exception as e:
+                    print(f"DB Check Fehler: {e}")
+
+        if len(new_files) > 0:
+            
+            files_to_process = new_files
+            
+            current_threshold = self.get_threshold() 
+            rename_active = self.get_rename_enabled() 
+            delete_unsure_active = self.get_delete_enabled() 
+            
+            greylist_active = self.get_greylist_active()
+            current_greylist = self.get_greylist()
+            
+            current_blacklist = self.get_blacklist() 
+
+            self.log_callback(f"{len(files_to_process)} neue Bilder gefunden. Verarbeite...")
+            
+            for file_path in files_to_process:
+                if not self.running: break
+                
+                if not os.path.exists(file_path):
+                    continue 
+
+                # --- KI ANALYSE ---
+                try:
+                    species, conf = self.ai.analyze_image(str(file_path))
+                except Exception:
+                    continue
+
+                if species == "Fehler":
+                    continue
+                
+                gc.collect() 
+                
+                # --- BILD KOPIEREN FÜR WEB-VIEW ---
+                try:
+                    target_img = os.path.join(STATIC_FOLDER, LAST_IMG_NAME)
+                    shutil.copy2(file_path, target_img)
+                except Exception as e:
+                    print(f"Konnte Vorschaubild nicht kopieren: {e}")
+
                 conf_percent = int(conf * 100)
                 timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                final_filename = file_path.name
+                
 
+                # --- 1. GREYLIST CHECK ---
+                if greylist_active and species in current_greylist:
+                    try:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                            self.log_callback(f"[{final_filename}] 🚫 {species} -> Bild gelöscht (Greylist)")
+                    except Exception as e:
+                        print(f"Greylist Lösch-Fehler: {e}")
+
+                    try:
+                        c.execute("INSERT INTO detections (filename, species, timestamp, confidence) VALUES (?, ?, ?, ?)",
+                                  (final_filename, species, timestamp, conf))
+                        conn.commit()
+                    except sqlite3.IntegrityError:
+                        pass
+                    continue 
+                
+                # --- 2. TRASH CHECK ---
+                is_blacklisted = (species in current_blacklist) 
+                
+                should_delete_trash = delete_unsure_active and (conf_percent < current_threshold or is_blacklisted)
+
+                if should_delete_trash:
+                    try:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                            reason = "Blacklist" if is_blacklisted else "Unsicher"
+                            self.log_callback(f"[{final_filename}] 🗑️ {species} ({conf_percent}%) -> Gelöscht ({reason})")
+                    except Exception as e:
+                        print(f"Lösch-Fehler: {e}")
+                    continue 
+
+                # --- UMBENENNUNG ---
+                if rename_active:
+                    try:
+                        if not os.path.exists(file_path): continue
+                        file_ext = file_path.suffix
+                        
+                        if conf_percent >= current_threshold:
+                            clean_species = species.replace(" ", "_")
+                        else:
+                            clean_species = "Unbekannt"
+                        
+                        while True:
+                            rand_id = random.randint(100000, 999999)
+                            new_name = f"{rand_id}_{clean_species}{file_ext}"
+                            new_full_path = file_path.parent / new_name
+                            if not new_full_path.exists():
+                                break
+                        
+                        os.rename(file_path, new_full_path)
+                        final_filename = new_name
+                        file_path = new_full_path 
+                        self.log_callback(f"Umbenannt zu: {final_filename}")
+                        
+                    except Exception as e:
+                        print(f"Fehler Umbenennung: {e}")
+
+                # --- DATENBANK EINTRAG (Normal) ---
                 try:
                     if conf_percent >= current_threshold:
                         c.execute("INSERT INTO detections (filename, species, timestamp, confidence) VALUES (?, ?, ?, ?)",
-                                  (file_path.name, species, timestamp, conf))
+                                  (final_filename, species, timestamp, conf))
                         conn.commit()
-                        self.log_callback(f"[{file_path.name}] ✅ {species} ({conf_percent}%) -> Gespeichert")
+                        self.log_callback(f"[{final_filename}] ✅ {species} ({conf_percent}%) -> Gespeichert")
                     else:
                         c.execute("INSERT INTO detections (filename, species, timestamp, confidence) VALUES (?, ?, ?, ?)",
-                                  (file_path.name, "IGNORED_LOW_CONFIDENCE", timestamp, conf))
+                                  (final_filename, "IGNORED_LOW_CONFIDENCE", timestamp, conf))
                         conn.commit()
-                        self.log_callback(f"[{file_path.name}] ❌ {species} ({conf_percent}%) -> Ignoriert (zu unsicher)")
+                        self.log_callback(f"[{final_filename}] ❌ {species} ({conf_percent}%) -> Ignoriert (DB)")
                 except sqlite3.IntegrityError:
-                    print(f"Duplikat übersprungen: {file_path.name}")
+                    pass 
         
         conn.close()
 
@@ -262,13 +433,37 @@ app = Flask(__name__)
 @app.route('/')
 def dashboard():
     chart_type = request.args.get('type', 'donut')
+    current_settings = load_settings()
+    current_threshold = current_settings.get("threshold", 70)
     
-    # Timeout für Webserver-Stabilität
     conn = sqlite3.connect(DB_FILE, timeout=10)
+    last_entry = None
+
     try:
         df = pd.read_sql_query("SELECT species, COUNT(*) as count FROM detections GROUP BY species", conn)
+        
+        cursor = conn.cursor()
+        cursor.execute("SELECT species, filename, timestamp, confidence FROM detections ORDER BY id DESC LIMIT 1")
+        row = cursor.fetchone()
+        
+        if row:
+            last_entry = {
+                'species': row[0],
+                'filename': row[1],
+                'timestamp': row[2],
+                'confidence': int(row[3] * 100)
+            }
+            if last_entry['species'] == "IGNORED_LOW_CONFIDENCE":
+                 last_entry['species'] = "Unbekannt"
+
         if not df.empty:
-            df['species'] = df['species'].replace('IGNORED_LOW_CONFIDENCE', 'Nicht erkannt')
+            df['species'] = df['species'].replace('IGNORED_LOW_CONFIDENCE', 'Unbekannt')
+            
+            # ÄNDERUNG: Sicherstellen, dass Count numerisch ist
+            df['count'] = pd.to_numeric(df['count'])
+            
+            # ÄNDERUNG: Sortierung der Daten (Häufigste zuerst)
+            df = df.sort_values(by='count', ascending=False)
     except:
         df = pd.DataFrame()
     finally:
@@ -276,14 +471,14 @@ def dashboard():
         
     total_count = df['count'].sum() if not df.empty else 0
     unknown_percent_str = "0.0 %"
+    
     if total_count > 0 and not df.empty:
-        unknown_row = df[df['species'] == 'Nicht erkannt']
+        unknown_row = df[df['species'] == 'Unbekannt']
         if not unknown_row.empty:
             u_count = unknown_row.iloc[0]['count']
             pct = (u_count / total_count) * 100
             unknown_percent_str = f"{pct:.1f} %"
     
-
     icon_map = {}
     static_folder = os.path.join(app.root_path, 'static', 'bird_icons')
     if os.path.exists(static_folder):
@@ -294,58 +489,154 @@ def dashboard():
 
     chart_url = ""
     if not df.empty:
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e') # Dark Mode Hintergrund
+        
         if chart_type == 'bar':
-            colors = ['lightgray' if sp == 'Nicht erkannt' else 'skyblue' for sp in df['species']]
+            cmap = plt.get_cmap('tab20')
+            colors = []
+            for i, sp in enumerate(df['species']):
+                if sp == 'Unbekannt':
+                    colors.append('#555555')
+                else:
+                    colors.append(cmap(i % 20))
+            
             ax.bar(df['species'], df['count'], color=colors)
-            ax.set_xlabel('Art')
-            ax.set_ylabel('Anzahl')
-            ax.set_title('Erkannte Arten (inkl. nicht erkannte)')
-            plt.xticks(rotation=45)
+            ax.set_xlabel('Art', color='white')
+            ax.set_ylabel('Anzahl', color='white')
+            ax.set_title('Verteilung der Arten', color='white')
+            ax.tick_params(axis='x', colors='white', rotation=45)
+            ax.tick_params(axis='y', colors='white')
+            ax.set_facecolor('#1e1e1e')
         else:
-            wedges, texts, autotexts = ax.pie(df['count'], labels=df['species'], autopct='%1.1f%%', startangle=90, pctdistance=0.85)
-            centre_circle = plt.Circle((0,0),0.70,fc='white')
+            # ÄNDERUNG: counterclock=False für "im Uhrzeigersinn" (Großes Stück oben rechts)
+            wedges, texts, autotexts = ax.pie(df['count'], labels=df['species'], autopct='%1.1f%%', 
+                                              startangle=90, counterclock=False, pctdistance=0.85,
+                                              textprops={'color':"white"})
+            centre_circle = plt.Circle((0,0),0.70,fc='#1e1e1e')
             fig.gca().add_artist(centre_circle)
             ax.axis('equal') 
-            ax.set_title('Verteilung der Arten', pad=20)
+            ax.set_title('Verteilung der Arten', pad=20, color='white')
             plt.setp(autotexts, size=10, weight="bold", color="white")
+        
         plt.tight_layout()
         img = io.BytesIO()
-        fig.savefig(img, format='png')
+        fig.savefig(img, format='png', facecolor='#1e1e1e')
         img.seek(0)
         chart_url = base64.b64encode(img.getvalue()).decode()
         plt.close(fig)
 
+    timestamp_now = int(time.time())
+
+    # --- HTML / CSS (DARK MODE & STICKY HEADER) ---
     html = """
     <!DOCTYPE html>
     <html>
     <head>
         <title>Vogel-Statistik</title>
         <meta http-equiv="refresh" content="30">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
         <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 20px; background-color: #f4f4f9; color: #333; }
-            .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-            h1 { color: #2c3e50; margin-bottom: 10px; }
-            .status-box { background: #eef2f3; padding: 15px; border-radius: 8px; margin-bottom: 25px; font-weight: bold; border-left: 5px solid #007bff; display: inline-block; }
+            body { 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                text-align: center; 
+                padding: 0; 
+                margin: 0;
+                background-color: #121212; /* Dark Mode Background */
+                color: #e0e0e0; /* Light Text */
+            }
+            .container { 
+                max-width: 900px; 
+                margin: 20px auto; 
+                background: #1e1e1e; /* Dark Mode Container */
+                padding: 30px; 
+                border-radius: 12px; 
+                box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
+            }
+            
+            /* Sticky Header für Titel */
+            .header-container {
+                position: sticky;
+                top: 0;
+                background-color: #1e1e1e;
+                z-index: 1000;
+                padding: 10px 0;
+                border-bottom: 1px solid #333;
+                margin-bottom: 20px;
+            }
+
+            h1 { color: #ffffff; margin: 0; font-size: 1.8em; }
+            
+            .last-sighting { 
+                background: #263238; /* Dark Blue-Grey */
+                border: 2px solid #37474f; 
+                border-radius: 10px; 
+                padding: 15px; 
+                margin: 20px 0;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            }
+            .last-sighting img { 
+                max-height: 300px; 
+                max-width: 100%; 
+                border-radius: 8px; 
+                box-shadow: 0 2px 5px rgba(0,0,0,0.5); 
+                margin-top: 10px;
+            }
+            .last-info { font-size: 1.2em; margin-bottom: 5px; color: #81d4fa; }
+
             .chart-toggle { margin: 20px 0; }
-            .toggle-btn { text-decoration: none; padding: 10px 20px; border: 1px solid #007bff; color: #007bff; margin: 0 5px; border-radius: 20px; transition: all 0.3s; }
-            .toggle-btn.active { background-color: #007bff; color: white; }
-            .toggle-btn:hover { background-color: #0056b3; color: white; }
+            .toggle-btn { 
+                text-decoration: none; 
+                padding: 10px 20px; 
+                border: 1px solid #4fc3f7; 
+                color: #4fc3f7; 
+                margin: 0 5px; 
+                border-radius: 20px; 
+                transition: all 0.3s; 
+            }
+            .toggle-btn.active { background-color: #4fc3f7; color: #121212; font-weight: bold; }
+            .toggle-btn:hover { background-color: #0288d1; color: white; }
+            
             table { width: 100%; max-width: 600px; margin: 30px auto; border-collapse: collapse; }
-            th { background-color: #007bff; color: white; padding: 12px; text-align: left; }
-            td { padding: 12px; border-bottom: 1px solid #ddd; vertical-align: middle; text-align: left; }
-            tr:hover { background-color: #f1f1f1; }
+            th { background-color: #0d47a1; color: white; padding: 12px; text-align: left; }
+            td { padding: 12px; border-bottom: 1px solid #333; vertical-align: middle; text-align: left; }
+            
+            tr:not(.highlight-row):hover { background-color: #2c2c2c; } 
+            
             .flex-center { display: flex; align-items: center; justify-content: flex-start; gap: 12px; }
-            .bird-icon { width: 24px; height: 24px; object-fit: contain; border-radius: 4px; }
-            tfoot tr.total-row { background-color: #e3f2fd; font-weight: bold; border-top: 2px solid #007bff; }
-            tfoot tr.sub-row { background-color: #f8f9fa; color: #666; font-size: 0.9em; border-top: none; }
-            .refresh-btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #6c757d; color: white; border-radius: 5px; text-decoration: none; }
+            .bird-icon { width: 24px; height: 24px; object-fit: contain; border-radius: 4px; background-color: #808080; }
+            
+            tfoot tr.total-row { background-color: #0d47a1; font-weight: bold; border-top: 2px solid #000; color: white;}
+            tfoot tr.sub-row { background-color: #263238; color: #b0bec5; font-size: 0.9em; border-top: none; }
+            
+            .refresh-btn { 
+                display: inline-block; 
+                margin-top: 20px; 
+                padding: 10px 20px; 
+                background: #546e7a; 
+                color: white; 
+                border-radius: 5px; 
+                text-decoration: none; 
+            }
+            .refresh-btn:hover { background: #78909c; }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>📊 Vogel-Beobachtungs-Statistik</h1>
+            <div class="header-container">
+                <h1>📊 Vogel-Beobachtungs-Statistik (AI)</h1>
+            </div>
             
+            {% if last_entry %}
+            <div class="last-sighting">
+                <div class="last-info">📸 Letzte Sichtung: <strong>{{ last_entry.species }}</strong></div>
+                <div>Zeit: {{ last_entry.timestamp }} | Konfidenz: {{ last_entry.confidence }}% (Limit: {{ threshold }}%)</div>
+                <img src="{{ url_for('static', filename='last_detection.jpg') }}?t={{ ts }}" alt="Warte auf Bild...">
+            </div>
+            {% endif %}
+
             {% if chart_url %}
                 <div class="chart-toggle">
                     <a href="/?type=donut" class="toggle-btn {% if request.args.get('type') != 'bar' %}active{% endif %}">🍩 Donut</a>
@@ -360,13 +651,13 @@ def dashboard():
                     <thead><tr><th>Vogelart</th><th style="text-align: right;">Anzahl</th></tr></thead>
                     <tbody>
                     {% for index, row in df.iterrows() %}
-                    <tr>
+                    <tr {% if last_entry and row['species'] == last_entry.species %}style="background-color: #37474f; font-weight: bold; border: 1px solid #4fc3f7;" class="highlight-row"{% endif %}>
                         <td>
                             <div class="flex-center">
                                 {% if row['species'] in icon_map %}
                                     <img src="{{ url_for('static', filename=icon_map[row['species']]) }}" class="bird-icon" alt="icon">
                                 {% else %}
-                                    <div style="width:24px; height:24px; background:#eee; border-radius:50%; text-align:center; line-height:24px; font-size:12px; color:#666;">?</div>
+                                    <div style="width:24px; height:24px; background:#555; border-radius:50%; text-align:center; line-height:24px; font-size:12px; color:#fff;">?</div>
                                 {% endif %}
                                 <span>{{ row['species'] }}</span>
                             </div>
@@ -377,7 +668,7 @@ def dashboard():
                     </tbody>
                     <tfoot>
                         <tr class="total-row"><td>GESAMT</td><td style="text-align: right; font-size: 1.1em;">{{ total_count }}</td></tr>
-                        <tr class="sub-row"><td style="padding-left: 20px;">↳ Anteil "Nicht erkannt"</td><td style="text-align: right;">{{ unknown_percent }}</td></tr>
+                        <tr class="sub-row"><td style="padding-left: 20px;">↳ Anteil "Unbekannt"</td><td style="text-align: right;">{{ unknown_percent }}</td></tr>
                     </tfoot>
                 </table>
             {% else %}
@@ -388,21 +679,47 @@ def dashboard():
     </body>
     </html>
     """
-    return render_template_string(html, chart_url=chart_url, df=df, icon_map=icon_map, total_count=total_count, unknown_percent=unknown_percent_str)
+    return render_template_string(html, chart_url=chart_url, df=df, icon_map=icon_map, 
+                                  total_count=total_count, unknown_percent=unknown_percent_str, 
+                                  last_entry=last_entry, ts=timestamp_now, threshold=current_threshold)
 
 def run_flask():
-    app.run(port=FLASK_PORT, debug=False, use_reloader=False)
+    # ÄNDERUNG: PRODUCTION SERVER
+    # host='0.0.0.0' bedeutet, dass die Webseite auch von anderen PCs 
+    # im gleichen Netzwerk aufrufbar ist (nicht nur localhost).
+    print(f"Starte Waitress Server auf Port {FLASK_PORT}...")
+    serve(app, host='0.0.0.0', port=FLASK_PORT)
 
 # --- HAUPTANWENDUNG (GUI) ---
 class AppGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Birds-AI-Classifier (800x448)")
-        self.root.geometry("600x680") 
+        self.root.geometry("600x850") 
         
+        # Listen laden
+        self.greylist = load_greylist()
+        self.blacklist = load_blacklist()
+        
+        # Einstellungen laden (Threshold + Pfad)
+        self.settings = load_settings()
+        
+        # Default Threshold laden
+        saved_threshold = self.settings.get("threshold", 70)
+
+        # Autostart Variablen
+        self.autostart_timer = None
+        self.in_autostart_mode = False
+
         self.monitor = FolderMonitor(self.update_log, 
                                      lambda: self.scale_threshold.get(),
-                                     self.update_size_display)
+                                     self.update_size_display,
+                                     lambda: self.rename_var.get(),
+                                     lambda: self.delete_var.get(),
+                                     lambda: self.greylist_var.get(), 
+                                     lambda: self.greylist,
+                                     lambda: self.blacklist 
+                                     )
         
         tk.Label(root, text="Vogel-Überwachung", font=("Arial", 16, "bold")).pack(pady=10)
         
@@ -411,9 +728,16 @@ class AppGUI:
         tk.Label(frame_folder, text="Bilder-Ordner:").pack(side=tk.LEFT, padx=5)
         self.entry_path = tk.Entry(frame_folder, width=40)
         self.entry_path.pack(side=tk.LEFT, padx=5)
+        
+        # NEU: Gespeicherten Pfad einfügen
+        last_folder = self.settings.get("last_folder", "")
+        if last_folder:
+            self.entry_path.insert(0, last_folder)
+            # Optional: Größe direkt berechnen, damit es "lebendig" aussieht
+            self.root.after(500, lambda: self.update_size_display(get_dir_size_mb(last_folder, True)))
+
         tk.Button(frame_folder, text="Durchsuchen...", command=self.select_folder).pack(side=tk.LEFT)
         
-        # Checkbox für rekursive Suche
         self.recursive_var = tk.BooleanVar(value=True)
         tk.Checkbutton(root, text="Unterordner ebenfalls durchsuchen (Rekursiv)", 
                        variable=self.recursive_var).pack(pady=2, anchor=tk.W, padx=20)
@@ -422,19 +746,59 @@ class AppGUI:
         frame_settings.pack(pady=10, padx=20, fill="x")
         
         tk.Label(frame_settings, text="Mindest-Wahrscheinlichkeit (%):").pack(anchor=tk.W)
-        self.scale_threshold = tk.Scale(frame_settings, from_=0, to=100, orient=tk.HORIZONTAL, length=400, tickinterval=20)
-        self.scale_threshold.set(65) 
+        
+        self.scale_threshold = tk.Scale(frame_settings, from_=0, to=100, orient=tk.HORIZONTAL, 
+                                        length=400, tickinterval=20, 
+                                        command=lambda v: save_setting("threshold", int(v)))
+        self.scale_threshold.set(saved_threshold) 
         self.scale_threshold.pack()
-        tk.Label(frame_settings, text="(Bilder unter diesem Wert werden als 'Nicht erkannt' markiert)", font=("Arial", 8)).pack(anchor=tk.W)
 
+        # ÄNDERUNG: Standard auf True
+        self.rename_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(frame_settings, text="Dateien umbenennen (Random + Class)", 
+                       variable=self.rename_var, fg="blue").pack(anchor=tk.W, pady=5)
+
+        # --- GREYLIST SETTINGS (Jetzt oben) ---
+        frame_greylist = tk.Frame(frame_settings)
+        frame_greylist.pack(anchor=tk.W, pady=5, fill="x")
+        
+        # ÄNDERUNG: Standard auf True
+        self.greylist_var = tk.BooleanVar(value=True)
+        cb_gl = tk.Checkbutton(frame_greylist, text="Greylist: Löschen + mit Datenbankeintrag)", 
+                       variable=self.greylist_var, fg="darkred", font=("Arial", 9, "bold"))
+        cb_gl.pack(side=tk.LEFT)
+        
+        btn_gl_select = tk.Button(frame_greylist, text="[ Greylist Konfig ]", 
+                                  command=lambda: self.open_list_config_window("Greylist", self.greylist, save_greylist), 
+                                  font=("Arial", 8))
+        btn_gl_select.pack(side=tk.LEFT, padx=10)
+
+        # --- TRASH SETTINGS (Jetzt unten) ---
+        frame_trash = tk.Frame(frame_settings)
+        frame_trash.pack(anchor=tk.W, pady=5, fill="x")
+
+        # ÄNDERUNG: Standard auf True
+        self.delete_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(frame_trash, text="Blacklist: Löschen + ohne Datenbankeintrag", 
+                       variable=self.delete_var, fg="red").pack(side=tk.LEFT)
+        
+        btn_trash_config = tk.Button(frame_trash, text="[ Blacklist Konfig ]", 
+                                     command=lambda: self.open_list_config_window("Blacklist (Trash)", self.blacklist, save_blacklist), 
+                                     font=("Arial", 8))
+        btn_trash_config.pack(side=tk.LEFT, padx=10)
+
+        # --- Buttons ---
         frame_controls = tk.Frame(root)
         frame_controls.pack(pady=10)
         
-        self.btn_start = tk.Button(frame_controls, text="Überwachung Starten", command=self.start_monitoring, bg="#dddddd", width=20)
+        # ÄNDERUNG: Button ruft jetzt die Autostart-Manager-Funktion auf
+        self.btn_start = tk.Button(frame_controls, text="Überwachung Starten", command=self.handle_start_button_click, bg="#dddddd", width=30)
         self.btn_start.pack(side=tk.LEFT, padx=5)
         
         tk.Button(frame_controls, text="Statistik öffnen", command=self.open_web).pack(side=tk.LEFT, padx=5)
-        tk.Button(frame_controls, text="Datenbank leeren", command=self.reset_database, bg="#ff9999").pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(frame_controls, text="DB Sync", command=self.sync_database_orphans, bg="#ffdd99").pack(side=tk.LEFT, padx=5)
+        tk.Button(frame_controls, text="DB Reset", command=self.reset_database, bg="#ff9999").pack(side=tk.LEFT, padx=5)
         
         self.lbl_size = tk.Label(root, text="Ordnergröße: 0.00 MB", font=("Arial", 10, "bold"), fg="blue")
         self.lbl_size.pack(pady=5)
@@ -443,15 +807,134 @@ class AppGUI:
         self.log_text = tk.Text(root, height=10, width=70, state='disabled')
         self.log_text.pack(pady=5)
         
+        tk.Button(root, text="Log leeren", command=self.clear_log, font=("Arial", 8)).pack(pady=2)
+        
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        
+        # --- AUTOSTART TRIGGER ---
+        self.init_autostart_sequence()
+
+    # --- AUTOSTART LOGIK ---
+    def init_autostart_sequence(self):
+        path = self.entry_path.get()
+        # Nur Autostart versuchen, wenn Pfad da ist UND existiert
+        if path and os.path.exists(path):
+            self.in_autostart_mode = True
+            self.countdown_loop(10) # 10 Sekunden Countdown
+    
+    def countdown_loop(self, remaining):
+        if not self.in_autostart_mode:
+            return # Abgebrochen
+
+        if remaining <= 0:
+            # Zeit abgelaufen -> START
+            self.in_autostart_mode = False
+            self.start_monitoring()
+        else:
+            # Noch Zeit -> Button updaten und Timer setzen
+            self.btn_start.config(text=f"Autostart in {remaining}s (Klick = Abbruch)", bg="#ccffcc")
+            self.autostart_timer = self.root.after(1000, lambda: self.countdown_loop(remaining - 1))
+
+    def handle_start_button_click(self):
+        # Fall 1: Wir sind noch im Countdown -> ABBRECHEN
+        if self.in_autostart_mode:
+            if self.autostart_timer:
+                self.root.after_cancel(self.autostart_timer)
+            self.in_autostart_mode = False
+            self.btn_start.config(text="Überwachung Starten", bg="#dddddd")
+            self.update_log("Autostart manuell abgebrochen.")
+        
+        # Fall 2: Normaler Modus -> Starten oder Stoppen
+        else:
+            self.start_monitoring()
 
     def select_folder(self):
         path = filedialog.askdirectory()
         if path:
             self.entry_path.delete(0, tk.END)
             self.entry_path.insert(0, path)
+            # NEU: Pfad speichern
+            save_setting("last_folder", path)
             size = get_dir_size_mb(path, self.recursive_var.get())
             self.update_size_display(size)
+
+    # Generische Funktion für Listen-Bearbeitung (Greylist oder Blacklist)
+    def open_list_config_window(self, title, data_set, save_func):
+        win = tk.Toplevel(self.root)
+        win.title(f"{title} bearbeiten")
+        win.geometry("400x500")
+        
+        tk.Label(win, text=f"Arten für {title} auswählen:", font=("Arial", 10, "bold")).pack(pady=10)
+        
+        known_species = set()
+        try:
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute("SELECT DISTINCT species FROM detections")
+            for row in c.fetchall():
+                known_species.add(row[0])
+            conn.close()
+        except:
+            pass
+        
+        # ÄNDERUNG: "Unbekannt" auch hier vereinheitlicht anzeigen
+        normalized_set = set()
+        for s in data_set:
+            normalized_set.add(s)
+        
+        # Auch in der DB könnten noch alte "IGNORED..." Einträge sein, die ignorieren wir hier für die Liste
+        db_species = set()
+        for s in known_species:
+            if s == "IGNORED_LOW_CONFIDENCE":
+                 db_species.add("Unbekannt")
+            else:
+                 db_species.add(s)
+
+        all_species = sorted(list(db_species.union(normalized_set)))
+        
+        frame_list = tk.Frame(win)
+        frame_list.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        scrollbar = tk.Scrollbar(frame_list)
+        scrollbar.pack(side=tk.RIGHT, fill="y")
+        
+        lb = tk.Listbox(frame_list, selectmode=tk.MULTIPLE, yscrollcommand=scrollbar.set)
+        lb.pack(side=tk.LEFT, fill="both", expand=True)
+        scrollbar.config(command=lb.yview)
+        
+        for sp in all_species:
+            lb.insert(tk.END, sp)
+            if sp in normalized_set:
+                lb.selection_set(tk.END) 
+
+        frame_add = tk.Frame(win)
+        frame_add.pack(pady=5)
+        entry_add = tk.Entry(frame_add)
+        entry_add.pack(side=tk.LEFT, padx=5)
+        
+        def add_manual():
+            val = entry_add.get().strip()
+            if val:
+                lb.insert(tk.END, val)
+                lb.selection_set(tk.END)
+                entry_add.delete(0, tk.END)
+
+        tk.Button(frame_add, text="Manuell hinzufügen", command=add_manual).pack(side=tk.LEFT)
+
+        def save_and_close():
+            selected_indices = lb.curselection()
+            new_set = set()
+            for i in selected_indices:
+                new_set.add(lb.get(i))
+            
+            data_set.clear()
+            data_set.update(new_set)
+            
+            save_func(data_set)
+            messagebox.showinfo("Gespeichert", f"{len(data_set)} Arten gespeichert.")
+            win.destroy()
+
+        tk.Button(win, text="Speichern & Schließen", command=save_and_close, bg="#ccffcc", height=2).pack(fill="x", padx=10, pady=10)
 
     def start_monitoring(self):
         path = self.entry_path.get()
@@ -459,14 +942,67 @@ class AppGUI:
             messagebox.showwarning("Fehler", "Bitte wähle zuerst einen Ordner aus.")
             return
             
-        if self.btn_start['text'] == "Überwachung Starten":
+        if self.btn_start['text'].startswith("Überwachung Starten") or self.btn_start['text'].startswith("Autostart"):
             self.monitor.start(path, self.recursive_var.get())
             self.btn_start.config(text="Stoppen", bg="#ffcccc")
-            self.update_log(f"Service gestartet (Schwelle: {self.scale_threshold.get()}%)...")
+            
+            infos = []
+            if self.rename_var.get(): infos.append("Rename")
+            if self.delete_var.get(): infos.append(f"Blacklist ({len(self.blacklist)} Arten)")
+            if self.greylist_var.get(): infos.append(f"Greylist ({len(self.greylist)} Arten)")
+            
+            info_str = ", ".join(infos) if infos else "Nur Erkennung"
+            self.update_log(f"Service gestartet: {info_str}")
         else:
             self.monitor.stop()
             self.btn_start.config(text="Überwachung Starten", bg="#dddddd")
             self.update_log("Service gestoppt.")
+
+    def sync_database_orphans(self):
+        folder = self.entry_path.get()
+        if not folder or not os.path.exists(folder):
+            messagebox.showwarning("Fehler", "Bitte Ordner wählen.")
+            return
+        
+        if not messagebox.askyesno("Sicherheitsabfrage", f"Möchtest du wirklich die Datenbank mit dem Ordner '{folder}' abgleichen?\n\nWARNUNG: Einträge der Greylist (bereits gelöschte Dateien) werden hiermit aus der Statistik entfernt!"):
+            return
+            
+        self.update_log("Starte Datenbank-Sync...")
+        
+        real_files_set = set()
+        recursive = self.recursive_var.get()
+        extensions = ['*.jpg', '*.jpeg', '*.JPG', '*.png']
+        path_obj = Path(folder)
+        
+        try:
+            for ext in extensions:
+                iterator = path_obj.rglob(ext) if recursive else path_obj.glob(ext)
+                for f in iterator:
+                    real_files_set.add(f.name)
+            
+            self.update_log(f"Dateien auf Platte: {len(real_files_set)}")
+            
+            conn = sqlite3.connect(DB_FILE, timeout=10)
+            c = conn.cursor()
+            c.execute("SELECT filename FROM detections")
+            db_rows = c.fetchall()
+            
+            deleted_count = 0
+            for row in db_rows:
+                fname = row[0]
+                if fname not in real_files_set:
+                    c.execute("DELETE FROM detections WHERE filename = ?", (fname,))
+                    deleted_count += 1
+            
+            conn.commit()
+            c.execute("VACUUM")
+            conn.close()
+            
+            self.update_log(f"Sync fertig: {deleted_count} verwaiste Einträge entfernt.")
+            messagebox.showinfo("Sync Fertig", f"{deleted_count} Einträge gelöscht.")
+            
+        except Exception as e:
+            self.update_log(f"Sync Fehler: {e}")
 
     def update_size_display(self, size_mb):
         def _update():
@@ -480,21 +1016,33 @@ class AppGUI:
         webbrowser.open(f"http://localhost:{FLASK_PORT}")
 
     def reset_database(self):
-        confirm = messagebox.askyesno("Warnung", "Alle Daten löschen?")
+        confirm = messagebox.askyesno("Sicherheitsabfrage", "Möchtest du wirklich ALLE Daten in der Datenbank löschen?\nDies kann nicht rückgängig gemacht werden.")
         if confirm:
             try:
                 conn = sqlite3.connect(DB_FILE, timeout=10)
                 c = conn.cursor()
                 c.execute("DELETE FROM detections")
                 conn.commit()
+                c.execute("VACUUM")
                 conn.close()
                 self.update_log("Datenbank geleert.")
-                messagebox.showinfo("Erfolg", "Datenbank geleert.")
+                messagebox.showinfo("Erfolg", "Datenbank wurde geleert.")
             except Exception as e:
                 messagebox.showerror("Fehler", f"{e}")
 
+    def clear_log(self):
+        self.log_text.config(state='normal')
+        self.log_text.delete(1.0, tk.END)
+        self.log_text.config(state='disabled')
+
     def update_log(self, message):
         self.log_text.config(state='normal')
+        try:
+            line_count = int(self.log_text.index('end-1c').split('.')[0])
+            if line_count > 100:
+                self.log_text.delete(1.0, tk.END)
+        except Exception:
+            pass 
         self.log_text.insert(tk.END, message + "\n")
         self.log_text.see(tk.END)
         self.log_text.config(state='disabled')
@@ -507,7 +1055,6 @@ class AppGUI:
 if __name__ == "__main__":
     init_db()
     
-    # Flask Prozess Start
     flask_process = multiprocessing.Process(target=run_flask, daemon=True)
     flask_process.start()
     

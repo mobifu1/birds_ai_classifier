@@ -1,0 +1,7 @@
+Verschiebt alle Bilder eines Ordners, welcher rekursiv durchsucht wird in den Ordner "pic_grabber
+
+Starte das Skript.
+-Klicke oben rechts auf "Ordner wählen..." und suche den Ordner mit den Bildern.
+-Klicke auf den großen grünen Button "Bilder grabben & verschieben".
+-Lehne dich zurück und beobachte im Log-Fenster, wie die Dateien verschoben werden.
+-Am Ende erscheint eine Meldung mit der Anzahl der verschobenen Bilder.

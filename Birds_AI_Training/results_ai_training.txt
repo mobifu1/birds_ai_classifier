@@ -1,22 +1,10 @@
-400x400:
-==================================================
-          TRAININGS-ANALYSE BERICHT
-==================================================
-Genauigkeit Training:                 95.23%
-Genauigkeit Validierung:              90.04%
-Abweichung (Gap):                     5.18%
---------------------------------------------------
-🟢 GUTES ERGEBNIS! Robustes Modell.
-==================================================
-
-
 800x448:
 ==================================================
           TRAININGS-ANALYSE BERICHT
 ==================================================
-Genauigkeit Training:                 95.05%
-Genauigkeit Validierung:              92.27%
-Abweichung (Gap):                     2.78%
+Genauigkeit Training:                 94.96%
+Genauigkeit Validierung:              91.33%
+Abweichung (Gap):                     3.63%
 --------------------------------------------------
 🟢 GUTES ERGEBNIS! Robustes Modell.
 ==================================================

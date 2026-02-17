@@ -6,6 +6,9 @@ Python: 3.10.11
 TensorFlow: 2.12.0
 Betriebssystem: Windows 10/11 (64-bit ist Pflicht für TensorFlow!)
 
+Webserver:
+pip install waitress
+
 Damit die Nutzung des eigenen trainierten Modells funktioniert, müssen nach dem Training die zwei Dateien in den gleichen Ordner wie das Classifier-Python-Script liegen. Beide Dateien werden durch das Training-Python-Script erzeugt.
 -my_birds_modell.keras
 -model_labels.json
