@@ -163,6 +163,35 @@ def save_blacklist(blacklist_set):
 
 # --- DATENBANK SETUP ---
 def init_db():
+    # --- AUTO-ROTATION: JÄHRLICHES ARCHIVIEREN ---
+    if os.path.exists(DB_FILE):
+        try:
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+            # Prüfen, ob es Einträge aus einem *vergangenen* Jahr gibt
+            cursor.execute("SELECT MIN(timestamp), MAX(timestamp) FROM detections")
+            row = cursor.fetchone()
+            conn.close()
+
+            if row and row[0]:
+                first_date = row[0] # Format: YYYY-MM-DD HH:MM:SS
+                last_date = row[1]
+                
+                db_year = int(first_date[:4])
+                current_year = datetime.datetime.now().year
+                
+                # Wenn das Jahr des ersten Eintrags kleiner ist als das aktuelle Jahr,
+                # dann ist es eine "alte" Datenbank -> Archivieren.
+                if db_year < current_year:
+                    archive_name = f"birds_stats_{db_year}.db"
+                    if not os.path.exists(archive_name):
+                        print(f"Jahreswechsel erkannt! Archiviere Datenbank nach {archive_name}...")
+                        os.rename(DB_FILE, archive_name)
+                    else:
+                        print(f"Warnung: Archiv {archive_name} existiert bereits. Überspringe Rotation.")
+        except Exception as e:
+            print(f"Fehler bei DB-Rotationsprüfung: {e}")
+
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     try:
@@ -171,6 +200,8 @@ def init_db():
                      (id INTEGER PRIMARY KEY, filename TEXT UNIQUE, species TEXT, timestamp TEXT, confidence REAL)''')
         c.execute('CREATE INDEX IF NOT EXISTS idx_species ON detections(species);')
         c.execute('CREATE INDEX IF NOT EXISTS idx_filename ON detections(filename);') 
+        # Optional: Index auf Timestamp für schnellere zeitbasierte Abfragen
+        c.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON detections(timestamp);')
     except Exception as e:
         print(f"DB Init Fehler: {e}") 
     conn.commit()
@@ -399,6 +430,9 @@ class FolderMonitor:
                 except sqlite3.IntegrityError: pass 
         conn.close()
 
+# --- NEU: VERSION ---
+APP_VERSION = "Version 1.0-R"
+
 # --- WEB SERVER (FLASK) ---
 app = Flask(__name__)
 
@@ -420,6 +454,13 @@ CSS_STYLE = """
         padding: 30px; 
         border-radius: 12px; 
         box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
+    }
+    .footer {
+        margin-top: 30px;
+        font-size: 0.8em;
+        color: #555;
+        border-top: 1px solid #333;
+        padding-top: 10px;
     }
     .header-container {
         position: sticky;
@@ -686,6 +727,10 @@ def dashboard():
                 <p>Noch keine Daten vorhanden.</p>
             {% endif %}
             <p><a href="/" class="button-link" style="background:#546e7a;">Seite aktualisieren</a></p>
+            
+            <div class="footer">
+                {{ version }}
+            </div>
         </div>
     </body>
     </html>
@@ -697,15 +742,29 @@ def dashboard():
                                   total_count=total_count, 
                                   last_entry=last_entry,
                                   css_style=CSS_STYLE,
-                                  ts=timestamp_now)
+                                  ts=timestamp_now,
+                                  version=APP_VERSION)
 
 @app.route('/weekly')
 def weekly_stats():
+    # --- SQL Aggregation (Speicheroptimierung) ---
+    query = """
+    SELECT 
+        CASE WHEN species = 'IGNORED_LOW_CONFIDENCE' THEN 'Unbekannt' ELSE species END as species,
+        strftime('%Y-%W', timestamp) as week_sort,
+        strftime('%W', timestamp) || '<br><small style=''color:#aaa''>''' || substr(strftime('%Y', timestamp), 3, 2) || '</small>' as week_display,
+        COUNT(*) as counts
+    FROM detections
+    WHERE timestamp IS NOT NULL AND timestamp != ''
+    GROUP BY species, week_sort, week_display
+    ORDER BY week_sort
+    """
+    
     conn = sqlite3.connect(DB_FILE, timeout=10)
     try:
-        df = pd.read_sql_query("SELECT species, timestamp FROM detections", conn)
+        grouped = pd.read_sql_query(query, conn)
     except:
-        df = pd.DataFrame()
+        grouped = pd.DataFrame()
     finally:
         conn.close()
 
@@ -719,19 +778,7 @@ def weekly_stats():
             if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
                 icon_map[os.path.splitext(f)[0]] = f"bird_icons/{f}"
 
-    if not df.empty:
-        df['dt'] = pd.to_datetime(df['timestamp'], errors='coerce')
-        df = df.dropna(subset=['dt'])
-        
-        df['species'] = df['species'].replace('IGNORED_LOW_CONFIDENCE', 'Unbekannt')
-
-        # Kalenderwoche formatieren
-        df['week_sort'] = df['dt'].apply(lambda x: f"{x.isocalendar()[0]}-{x.isocalendar()[1]:02d}")
-        df['week_display'] = df['dt'].apply(lambda x: f"{x.isocalendar()[1]}<br><small style='color:#aaa'>'{str(x.isocalendar()[0])[-2:]}</small>")
-        
-        # Absolute Zahlen zählen
-        grouped = df.groupby(['species', 'week_sort', 'week_display']).size().reset_index(name='counts')
-        
+    if not grouped.empty:
         # Pivot Tabelle mit absoluten Zahlen erstellen
         pivot_counts = grouped.pivot(index='species', columns='week_display', values='counts').fillna(0)
         
@@ -816,11 +863,14 @@ def weekly_stats():
             {{ table_content|safe }}
             
             <br>
+            <div class="footer">
+                {{ version }}
+            </div>
         </div>
     </body>
     </html>
     """
-    return render_template_string(html, css_style=CSS_STYLE, table_content=html_table)
+    return render_template_string(html, css_style=CSS_STYLE, table_content=html_table, version=APP_VERSION)
 
 def run_flask():
     print(f"Starte Waitress Server auf Port {FLASK_PORT}...")
@@ -830,7 +880,7 @@ def run_flask():
 class AppGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Birds-AI-Classifier (800x448)")
+        self.root.title(f"Birds-AI-Classifier (800x448) - {APP_VERSION}")
         self.root.geometry("600x850") 
         self.greylist = load_greylist()
         self.blacklist = load_blacklist()

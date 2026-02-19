@@ -61,6 +61,12 @@ class BirdGrabberApp:
     def log(self, message):
         """Hilfsfunktion, um Text in das Log-Fenster zu schreiben."""
         self.log_text.config(state='normal') # Schreibschutz aufheben
+        
+        # Begrenzung auf 1000 Zeilen, um Speicherüberlauf zu vermeiden
+        line_count = int(self.log_text.index('end-1c').split('.')[0])
+        if line_count > 1000:
+            self.log_text.delete('1.0', '2.0')
+
         self.log_text.insert(tk.END, message + "\n")
         self.log_text.see(tk.END) # Automatisch nach unten scrollen
         self.log_text.config(state='disabled') # Schreibschutz wieder aktivieren
