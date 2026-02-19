@@ -410,10 +410,11 @@ class FolderMonitor:
                             new_full_path = file_path.parent / new_name
                             if not new_full_path.exists():
                                 break
+                        old_name = file_path.name
                         os.rename(file_path, new_full_path)
                         final_filename = new_name
                         file_path = new_full_path 
-                        self.log_callback(f"Umbenannt zu: {final_filename}")
+                        self.log_callback(f"[{old_name}] ✏️ Umbenannt zu: {final_filename}")
                     except: pass
 
                 try:
