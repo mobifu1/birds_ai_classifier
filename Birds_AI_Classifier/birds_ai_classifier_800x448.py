@@ -13,6 +13,7 @@ import re
 import random 
 import gc 
 import shutil 
+import psutil
 
 # --- NEU: Pillow für EXIF-Daten ---
 from PIL import Image, ExifTags
@@ -274,7 +275,7 @@ class FolderMonitor:
     def __init__(self, update_log_callback, get_threshold_callback, update_size_callback, 
                  get_rename_callback, get_delete_callback, 
                  get_greylist_active_callback, get_greylist_callback,
-                 get_blacklist_callback): 
+                 get_blacklist_callback, update_duration_callback=None): 
         self.running = False
         self.folder_path = ""
         self.recursive = False 
@@ -287,6 +288,7 @@ class FolderMonitor:
         self.get_greylist_active = get_greylist_active_callback
         self.get_greylist = get_greylist_callback
         self.get_blacklist = get_blacklist_callback
+        self.update_duration_callback = update_duration_callback
         self.thread = None
 
     def start(self, folder_path, recursive=False): 
@@ -355,9 +357,13 @@ class FolderMonitor:
                 if not self.running: break
                 if not os.path.exists(file_path): continue 
 
+                start_time = time.time()
                 try:
                     species, conf = self.ai.analyze_image(str(file_path))
                 except Exception: continue
+                duration_ms = int((time.time() - start_time) * 1000)
+                if self.update_duration_callback:
+                    self.update_duration_callback(duration_ms)
                 if species == "Fehler": continue
                 
                 gc.collect() 
@@ -803,7 +809,8 @@ def weekly_stats():
         # Header
         html_table += '<thead><tr><th style="text-align:left;">Vogelart</th>'
         for col in pivot_pct.columns:
-            html_table += f'<th>{col}</th>'
+            total_in_week = int(week_totals[col])
+            html_table += f'<th>{col}<br><small style="color:#81d4fa;">(∑ {total_in_week})</small></th>'
         html_table += '</tr></thead><tbody>'
         
         # Zeilen
@@ -820,14 +827,21 @@ def weekly_stats():
             # Zelle bauen (Sticky) mit Wrapper
             html_table += f'<tr><td style="text-align:left; font-weight:bold;"><div class="species-wrapper">{img_tag}<span>{species}</span></div></td>'
             
-            for val in row:
+            for col_name, val in row.items():
+                absolute_count = int(pivot_counts.at[species, col_name])
+                total_in_week = int(week_totals[col_name])
+                
                 style = 'background-color: transparent;'
                 if val > 0:
                     alpha = 0.15 + (val / 50.0) * 0.85 
                     alpha = min(alpha, 1.0) 
                     style = f'background-color: rgba(0, 255, 64, {alpha});'
                 
-                tooltip = f"{val:.1f}%" if val > 0 else "0%"
+                if total_in_week > 0:
+                    tooltip = f"{val:.1f}% ({absolute_count} von {total_in_week} Vögeln)"
+                else:
+                    tooltip = "0%"
+                    
                 html_table += f'<td title="{tooltip}" style="{style}"></td>'
             html_table += '</tr>'
         html_table += '</tbody></table></div>'
@@ -898,7 +912,8 @@ class AppGUI:
                                      lambda: self.delete_var.get(),
                                      lambda: self.greylist_var.get(), 
                                      lambda: self.greylist,
-                                     lambda: self.blacklist 
+                                     lambda: self.blacklist,
+                                     self.update_duration_display
                                      )
         
         tk.Label(root, text="Vogel-Überwachung", font=("Arial", 16, "bold")).pack(pady=10)
@@ -970,7 +985,15 @@ class AppGUI:
         self.log_text.pack(pady=5)
         tk.Button(root, text="Log leeren", command=self.clear_log, font=("Arial", 8)).pack(pady=2)
         
+        self.lbl_duration = tk.Label(root, text="Bild-Verarbeitung: - ms", font=("Arial", 9), fg="gray")
+        self.lbl_duration.pack(pady=2)
+        
+        self.lbl_ram = tk.Label(root, text="RAM: - MB", font=("Arial", 9), fg="gray")
+        self.lbl_ram.pack(pady=2)
+        
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        
+        self.update_ram_usage()
         self.init_autostart_sequence()
 
     def init_autostart_sequence(self):
@@ -1126,6 +1149,21 @@ class AppGUI:
             if size_mb > 500: color = "red"
             self.lbl_size.config(text=f"Ordnergröße: {size_mb:.2f} MB", fg=color)
         self.root.after(0, _update)
+
+    def update_duration_display(self, duration_ms):
+        def _update():
+            self.lbl_duration.config(text=f"Bild-Verarbeitung: {duration_ms} ms")
+        self.root.after(0, _update)
+
+    def update_ram_usage(self):
+        try:
+            process = psutil.Process(os.getpid())
+            mem_info = process.memory_info()
+            ram_mb = mem_info.rss / (1024 * 1024)
+            self.lbl_ram.config(text=f"RAM: {ram_mb:.1f} MB")
+        except:
+            pass
+        self.root.after(2000, self.update_ram_usage) # Update every 2 seconds
 
     def open_web(self):
         webbrowser.open(f"http://localhost:{FLASK_PORT}")

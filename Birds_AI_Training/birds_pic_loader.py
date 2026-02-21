@@ -4,7 +4,7 @@ import requests
 from duckduckgo_search import DDGS
 
 # --- KONFIGURATION ---
-GESUCHTER_VOGEL = "Feldsperling"     # Nur noch der deutsche Name nötig
+GESUCHTER_VOGEL = "Goldhähnchen"     # Nur noch der deutsche Name nötig
 ANZAHL_PRO_SUCHE = 30             # Bilder pro Suchbegriff
 DOWNLOAD_ORDNER = "neue_bilder_downloads"
 
