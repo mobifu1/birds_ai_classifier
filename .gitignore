@@ -13,5 +13,6 @@ test/
 *.keras
 *.h5
 *.spec
+*.db
 
 

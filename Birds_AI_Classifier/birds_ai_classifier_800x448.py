@@ -701,6 +701,7 @@ def dashboard():
             <div class="header-container">
                 <h1>📊 Vogel-Beobachtungs-Statistik (AI)</h1>
                 <div style="margin-top:10px;">
+                    <a href="/daily" class="button-link" style="background:#00838f;">📈 Tages-Ansicht (Verlauf)</a>
                     <a href="/weekly" class="button-link">📅 Wochen-Ansicht (Heatmap)</a>
                 </div>
             </div>
@@ -900,6 +901,196 @@ def weekly_stats():
     </html>
     """
     return render_template_string(html, css_style=CSS_STYLE, table_content=html_table, version=APP_VERSION)
+
+@app.route('/daily')
+def daily_stats():
+    # Aktuelles Datum und gewähltes Datum bestimmen
+    today_date = datetime.datetime.now().date()
+    today_str = today_date.strftime("%Y-%m-%d")
+    
+    selected_date_str = request.args.get('date', today_str)
+    
+    # Validierung des Formats
+    try:
+        selected_date = datetime.datetime.strptime(selected_date_str, "%Y-%m-%d").date()
+    except ValueError:
+        selected_date = today_date
+        selected_date_str = today_str
+        
+    prev_date = (selected_date - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    next_date = (selected_date + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    is_today = (selected_date_str == today_str)
+    
+    # 1. Daten für gewähltes Datum aus der Datenbank lesen
+    query = f"""
+        SELECT 
+            CASE WHEN species = 'IGNORED_LOW_CONFIDENCE' THEN 'Unbekannt' ELSE species END as species,
+            timestamp
+        FROM detections 
+        WHERE timestamp LIKE '{selected_date_str}%'
+    """
+    
+    conn = sqlite3.connect(DB_FILE, timeout=10)
+    try:
+        df = pd.read_sql_query(query, conn)
+    except:
+        df = pd.DataFrame()
+    finally:
+        conn.close()
+
+    chart_url = ""
+    if not df.empty:
+        # 2. Zeitstempel in Pandas-Datetime konvertieren
+        df['datetime'] = pd.to_datetime(df['timestamp'])
+        
+        # 3. Aggregation (Zusammenfassen der Sichtungen pro Stunde)
+        # Wir extrahieren die Stunde (0-23) aus dem Datetime-Objekt
+        df['hour'] = df['datetime'].dt.hour
+        
+        # Erstelle eine Matrix: Stunden als Zeilen (Index), Vogelarten als Spalten
+        pivot_df = pd.crosstab(df['hour'], df['species'])
+        
+        # Fülle leere Stundenladungen auf (damit die X-Achse immer von 0 bis 23 geht)
+        pivot_df = pivot_df.reindex(range(24), fill_value=0)
+
+        # 4. Kurvendiagramm zeichnen
+        fig, ax = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e')
+        cmap = plt.get_cmap('tab20')
+        
+        for i, species in enumerate(pivot_df.columns):
+            color = '#555555' if species == 'Unbekannt' else cmap(i % 20)
+            # marker='o' zeigt Punkte auf der Linie an Variablen
+            ax.plot(pivot_df.index, pivot_df[species], marker='o', label=species, color=color, linewidth=2.5)
+            
+        # Achsen und Layout konfigurieren
+        ax.set_title(f'Tagesübersicht - {selected_date_str}', color='white', fontsize=14)
+        ax.set_xlabel('Uhrzeit', color='white', fontsize=12)
+        ax.set_ylabel('Anzahl der Sichtungen', color='white', fontsize=12)
+        
+        # X-Achse erzwingen von 00:00 bis 23:00 Uhr
+        ax.set_xticks(range(24))
+        ax.set_xticklabels([f"{h:02d}:00" for h in range(24)], rotation=45)
+        
+        ax.tick_params(axis='x', colors='white')
+        ax.tick_params(axis='y', colors='white')
+        ax.grid(True, color='#333333', linestyle='--', alpha=0.5)
+        
+        # Legende neben den Graphen platzieren
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), facecolor='#1e1e1e', labelcolor='white')
+        ax.set_facecolor('#1e1e1e')
+        
+        # Als base64 Bild exportieren
+        plt.tight_layout()
+        img = io.BytesIO()
+        fig.savefig(img, format='png', facecolor='#1e1e1e')
+        img.seek(0)
+        chart_url = base64.b64encode(img.getvalue()).decode()
+        plt.close(fig)
+
+    # 5. HTML Template für die Daily-Seite rendern
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Tages-Statistik (Daily)</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+        {% if is_today %}
+        <meta http-equiv="refresh" content="30"> <!-- Autorefresh alle 30s nur für den heutigen Tag -->
+        {% endif %}
+        {{ css_style|safe }}
+        <style>
+            .date-controls {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 15px;
+                margin: 20px 0;
+                flex-wrap: wrap;
+                background: #263238;
+                padding: 15px;
+                border-radius: 8px;
+                border: 1px solid #37474f;
+            }
+            .date-input {
+                padding: 8px 12px;
+                background: #1e1e1e;
+                color: #fff;
+                border: 1px solid #555;
+                border-radius: 4px;
+                font-size: 1em;
+                font-family: inherit;
+            }
+            .date-input::-webkit-calendar-picker-indicator {
+                filter: invert(1);
+                cursor: pointer;
+            }
+            a.jumper-btn {
+                display: inline-block;
+                padding: 8px 15px;
+                background: #37474f;
+                color: white;
+                text-decoration: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 0.9em;
+                transition: background 0.2s;
+            }
+            a.jumper-btn:hover { background: #455a64; }
+        </style>
+    </head>
+    <body>
+        <div class="container" style="max-width: 95%;">
+            <div class="header-container">
+                <h1>📈 Tagesübersicht (Verlauf)</h1>
+                <div style="margin-top:10px;">
+                    <a href="/" class="button-link" style="background:#546e7a;">&laquo; Zurück zur Übersicht</a>
+                </div>
+            </div>
+            
+            <div class="date-controls">
+                <a href="/daily?date={{ prev_date }}" class="jumper-btn">&laquo; {% if not is_today %}Vorheriger Tag{% else %}Gestern{% endif %}</a>
+                
+                <input type="date" class="date-input" value="{{ selected_date_str }}" max="{{ today_str }}" id="datePicker">
+                
+                {% if not is_today %}
+                <a href="/daily?date={{ next_date }}" class="jumper-btn">Nächster Tag &raquo;</a>
+                <a href="/daily?date={{ today_str }}" class="jumper-btn" style="background: #00838f;">Heute</a>
+                {% endif %}
+            </div>
+            
+            <script>
+                document.getElementById('datePicker').addEventListener('change', function() {
+                    window.location.href = '/daily?date=' + this.value;
+                });
+            </script>
+            
+            <p>Sichtungen der Vogelarten im Verlauf des Tages ({% if is_today %}Heute, {% endif %}{{ selected_date_str }}).</p>
+            
+            {% if chart_url %}
+                <div style="text-align:center; margin-top: 20px;">
+                    <img src="data:image/png;base64,{{ chart_url }}" alt="Daily Chart" style="max-width:100%; height:auto; border-radius:8px; border: 1px solid #333;">
+                </div>
+            {% else %}
+                <p style="color: #ff9800; font-weight:bold;">An diesem Tag ({{ selected_date_str }}) wurden keine Vögel gesichtet.</p>
+            {% endif %}
+            
+            <br>
+            <div class="footer">
+                {{ version }}
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(html, 
+                                  css_style=CSS_STYLE, 
+                                  chart_url=chart_url, 
+                                  version=APP_VERSION,
+                                  selected_date_str=selected_date_str,
+                                  today_str=today_str,
+                                  prev_date=prev_date,
+                                  next_date=next_date,
+                                  is_today=is_today)
 
 def run_flask():
     print(f"Starte Waitress Server auf Port {FLASK_PORT}...")
