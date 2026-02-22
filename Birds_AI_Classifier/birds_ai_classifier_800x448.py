@@ -14,6 +14,8 @@ import random
 import gc 
 import shutil 
 import psutil
+import subprocess
+import platform
 
 # --- NEU: Pillow für EXIF-Daten ---
 from PIL import Image, ExifTags
@@ -647,6 +649,17 @@ def dashboard():
     except: df = pd.DataFrame()
     finally: conn.close()
         
+    ping_active = False
+    camera_online = False
+    try:
+        if os.path.exists("camera_status.json"):
+            with open("camera_status.json", "r") as f:
+                cstat = json.load(f)
+                ping_active = cstat.get("ping_active", False)
+                camera_online = cstat.get("camera_online", False)
+    except:
+        pass
+        
     total_count = df['count'].sum() if not df.empty else 0
     today_total = df['today_count'].sum() if not df.empty else 0
     unknown_percent_str = "0.0 %"
@@ -710,7 +723,15 @@ def dashboard():
             <div class="last-sighting">
                 <div class="last-info" style="font-size:1.2em;color:#81d4fa;">📸 Letzte Sichtung: <strong>{{ last_entry.species }}</strong></div>
                 <div>Zeit: {{ last_entry.timestamp }} | Konfidenz: {{ last_entry.confidence }}%</div>
-                <img src="{{ url_for('static', filename='last_detection.jpg') }}?t={{ ts }}" alt="Warte auf Bild...">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+                    <img src="{{ url_for('static', filename='last_detection.jpg') }}?t={{ ts }}" alt="Warte auf Bild...">
+                    {% if ping_active %}
+                        <div style="display: flex; flex-direction: column; align-items: center;">
+                            <div style="width: 20px; height: 20px; border-radius: 50%; background-color: {% if camera_online %}#00e676{% else %}#ff1744{% endif %}; box-shadow: 0 0 10px {% if camera_online %}#00e676{% else %}#ff1744{% endif %};"></div>
+                            <small style="color: #aaa; margin-top: 5px;">Kamera</small>
+                        </div>
+                    {% endif %}
+                </div>
             </div>
             {% endif %}
 
@@ -765,7 +786,9 @@ def dashboard():
                                   last_entry=last_entry,
                                   css_style=CSS_STYLE,
                                   ts=timestamp_now,
-                                  version=APP_VERSION)
+                                  version=APP_VERSION,
+                                  ping_active=ping_active,
+                                  camera_online=camera_online)
 
 @app.route('/weekly')
 def weekly_stats():
@@ -1174,6 +1197,11 @@ class AppGUI:
                                      font=("Arial", 8))
         btn_trash_config.pack(side=tk.LEFT, padx=10)
 
+        frame_ping = tk.Frame(frame_settings)
+        frame_ping.pack(anchor=tk.W, pady=5, fill="x")
+        self.ping_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(frame_ping, text="Kamera IP anpingen", variable=self.ping_var, fg="darkgreen").pack(side=tk.LEFT)
+
         frame_controls = tk.Frame(root)
         frame_controls.pack(pady=10)
         self.btn_start = tk.Button(frame_controls, text="Überwachung Starten", command=self.handle_start_button_click, bg="#dddddd", width=30)
@@ -1200,6 +1228,40 @@ class AppGUI:
         
         self.update_ram_usage()
         self.init_autostart_sequence()
+        self.schedule_ping()
+
+    def schedule_ping(self):
+        if self.ping_var.get():
+            ip = self.settings.get("camera_ip", "")
+            if ip:
+                threading.Thread(target=self._do_ping_task, args=(ip,), daemon=True).start()
+            else:
+                self.update_log("Ping aktiv, aber keine 'camera_ip' in settings.json.")
+                self._write_ping_status(True, False)
+        else:
+            self._write_ping_status(False, False)
+            
+        self.root.after(300000, self.schedule_ping) # 5 minutes
+
+    def _do_ping_task(self, ip):
+        try:
+            param = '-n' if platform.system().lower() == 'windows' else '-c'
+            command = ['ping', param, '1', ip]
+            result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            is_online = (result.returncode == 0)
+            status_text = "ONLINE" if is_online else "OFFLINE"
+            self.update_log(f"Ping an {ip}: {status_text}")
+            self._write_ping_status(True, is_online)
+        except Exception as e:
+            self.update_log(f"Fehler beim Ping an {ip}: {e}")
+            self._write_ping_status(True, False)
+
+    def _write_ping_status(self, active, online):
+        try:
+            with open("camera_status.json", "w") as f:
+                json.dump({"ping_active": active, "camera_online": online}, f)
+        except:
+            pass
 
     def init_autostart_sequence(self):
         path = self.entry_path.get()
