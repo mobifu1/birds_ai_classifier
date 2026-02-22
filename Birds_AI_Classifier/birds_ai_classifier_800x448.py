@@ -618,10 +618,20 @@ def dashboard():
     current_settings = load_settings()
     current_threshold = current_settings.get("threshold", 70)
     
+    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    
     conn = sqlite3.connect(DB_FILE, timeout=10)
     last_entry = None
     try:
-        df = pd.read_sql_query("SELECT species, COUNT(*) as count FROM detections GROUP BY species", conn)
+        query = f"""
+            SELECT 
+                species, 
+                COUNT(*) as count,
+                SUM(CASE WHEN timestamp LIKE '{today_str}%' THEN 1 ELSE 0 END) as today_count
+            FROM detections 
+            GROUP BY species
+        """
+        df = pd.read_sql_query(query, conn)
         cursor = conn.cursor()
         cursor.execute("SELECT species, filename, timestamp, confidence FROM detections ORDER BY id DESC LIMIT 1")
         row = cursor.fetchone()
@@ -632,11 +642,13 @@ def dashboard():
         if not df.empty:
             df['species'] = df['species'].replace('IGNORED_LOW_CONFIDENCE', 'Unbekannt')
             df['count'] = pd.to_numeric(df['count'])
+            df['today_count'] = pd.to_numeric(df['today_count']).fillna(0).astype(int)
             df = df.sort_values(by='count', ascending=False)
     except: df = pd.DataFrame()
     finally: conn.close()
         
     total_count = df['count'].sum() if not df.empty else 0
+    today_total = df['today_count'].sum() if not df.empty else 0
     unknown_percent_str = "0.0 %"
     if total_count > 0 and not df.empty:
         unknown_row = df[df['species'] == 'Unbekannt']
@@ -708,7 +720,7 @@ def dashboard():
                 
                 <h2>Detaillierte Liste</h2>
                 <table>
-                    <thead><tr><th>Vogelart</th><th style="text-align: right;">Anzahl</th></tr></thead>
+                    <thead><tr><th>Vogelart</th><th style="text-align: right;">Heute</th><th style="text-align: right;">Gesamt</th></tr></thead>
                     <tbody>
                     {% for index, row in df.iterrows() %}
                     <tr>
@@ -722,12 +734,13 @@ def dashboard():
                                 <span>{{ row['species'] }}</span>
                             </div>
                         </td>
+                        <td style="text-align: right; font-weight: bold;">{{ row['today_count'] }}</td>
                         <td style="text-align: right; font-weight: bold;">{{ row['count'] }}</td>
                     </tr>
                     {% endfor %}
                     </tbody>
                     <tfoot>
-                        <tr style="background-color:#0d47a1; font-weight:bold;"><td>GESAMT</td><td style="text-align: right;">{{ total_count }}</td></tr>
+                        <tr style="background-color:#0d47a1; font-weight:bold;"><td>GESAMT</td><td style="text-align: right;">{{ today_total }}</td><td style="text-align: right;">{{ total_count }}</td></tr>
                     </tfoot>
                 </table>
             {% else %}
@@ -746,7 +759,8 @@ def dashboard():
                                   chart_url=chart_url, 
                                   df=df, 
                                   icon_map=icon_map, 
-                                  total_count=total_count, 
+                                  total_count=total_count,
+                                  today_total=today_total,
                                   last_entry=last_entry,
                                   css_style=CSS_STYLE,
                                   ts=timestamp_now,
