@@ -1001,6 +1001,8 @@ def daily_stats():
     finally:
         conn.close()
 
+    total_birds_day = len(df) if not df.empty else 0
+
     chart_url = ""
     if not df.empty:
         # 2. Zeitstempel in Pandas-Datetime konvertieren
@@ -1129,6 +1131,10 @@ def daily_stats():
             
             <p>Sichtungen der Vogelarten im Verlauf des Tages ({% if is_today %}Heute, {% endif %}{{ selected_date_str }}).</p>
             
+            <div style="font-size: 1.5em; font-weight: bold; margin: 15px 0; color: #81d4fa;">
+                &sum; Gesamtsumme: {{ total_birds_day }}
+            </div>
+            
             {% if chart_url %}
                 <div style="text-align:center; margin-top: 20px;">
                     <img src="data:image/png;base64,{{ chart_url }}" alt="Daily Chart" style="max-width:100%; height:auto; border-radius:8px; border: 1px solid #333;">
@@ -1153,7 +1159,8 @@ def daily_stats():
                                   today_str=today_str,
                                   prev_date=prev_date,
                                   next_date=next_date,
-                                  is_today=is_today)
+                                  is_today=is_today,
+                                  total_birds_day=total_birds_day)
 
 def run_flask():
     print(f"Starte Waitress Server auf Port {FLASK_PORT}...")
