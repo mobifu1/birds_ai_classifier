@@ -8,6 +8,7 @@ birds_training_dataset_shuffled_temp/
 neue_bilder_downloads/
 new_birds/
 test/
+backlog/
 
 # Ignoriere Modell-Files mit den Rohdaten
 *.keras

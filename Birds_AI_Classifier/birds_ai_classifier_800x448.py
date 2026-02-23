@@ -50,6 +50,7 @@ import numpy as np
 DB_FILE = "birds_stats.db"
 GREYLIST_FILE = "greylist.json" 
 BLACKLIST_FILE = "blacklist.json" 
+BACKLOG_FILE = "backlog.json"
 SETTINGS_FILE = "settings.json" 
 FLASK_PORT = 5000
 CHECK_INTERVAL_SECONDS = 5 
@@ -162,6 +163,21 @@ def save_blacklist(blacklist_set):
     try:
         with open(BLACKLIST_FILE, 'w', encoding='utf-8') as f:
             json.dump(list(blacklist_set), f, ensure_ascii=False, indent=2)
+    except: pass
+
+def load_backlog():
+    if os.path.exists(BACKLOG_FILE):
+        try:
+            with open(BACKLOG_FILE, 'r', encoding='utf-8') as f:
+                return set(json.load(f))
+        except:
+            return set()
+    return set()
+
+def save_backlog(backlog_set):
+    try:
+        with open(BACKLOG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(list(backlog_set), f, ensure_ascii=False, indent=2)
     except: pass
 
 # --- DATENBANK SETUP ---
@@ -277,6 +293,7 @@ class FolderMonitor:
     def __init__(self, update_log_callback, get_threshold_callback, update_size_callback, 
                  get_rename_callback, get_delete_callback, 
                  get_greylist_active_callback, get_greylist_callback,
+                 get_backlog_active_callback, get_backlog_callback,
                  get_blacklist_callback, update_duration_callback=None): 
         self.running = False
         self.folder_path = ""
@@ -289,6 +306,8 @@ class FolderMonitor:
         self.get_delete_enabled = get_delete_callback
         self.get_greylist_active = get_greylist_active_callback
         self.get_greylist = get_greylist_callback
+        self.get_backlog_active = get_backlog_active_callback
+        self.get_backlog_callback = get_backlog_callback
         self.get_blacklist = get_blacklist_callback
         self.update_duration_callback = update_duration_callback
         self.thread = None
@@ -351,6 +370,8 @@ class FolderMonitor:
             delete_unsure_active = self.get_delete_enabled() 
             greylist_active = self.get_greylist_active()
             current_greylist = self.get_greylist()
+            backlog_active = self.get_backlog_active()
+            current_backlog = self.get_backlog_callback()
             current_blacklist = self.get_blacklist() 
 
             self.log_callback(f"{len(files_to_process)} neue Bilder gefunden. Verarbeite...")
@@ -379,6 +400,46 @@ class FolderMonitor:
                 timestamp = get_original_date(str(file_path))
                 final_filename = file_path.name
                 
+                if rename_active:
+                    try:
+                        if not os.path.exists(file_path): continue
+                        file_ext = file_path.suffix
+                        if conf_percent >= current_threshold:
+                            clean_species = species.replace(" ", "_")
+                        else:
+                            clean_species = "Unbekannt"
+                        while True:
+                            rand_id = random.randint(100000, 999999)
+                            new_name = f"{rand_id}_{clean_species}{file_ext}"
+                            new_full_path = file_path.parent / new_name
+                            if not new_full_path.exists():
+                                break
+                        old_name = file_path.name
+                        os.rename(file_path, new_full_path)
+                        final_filename = new_name
+                        file_path = new_full_path 
+                        self.log_callback(f"[{old_name}] ✏️ Umbenannt zu: {final_filename}")
+                    except: pass
+
+                if backlog_active:
+                    is_low_confidence = (conf_percent < current_threshold)
+                    # Wenn das Bild unter dem Threshold liegt, behandeln wir es für den Backlog-Filter als "Unbekannt"
+                    match_species = "Unbekannt" if is_low_confidence else species
+                    
+                    if species in current_backlog or match_species in current_backlog:
+                        try:
+                            # Der backlog Ordner liegt ab jetzt direkt im Verzeichnis des Python Skripts
+                            app_dir = Path(os.path.abspath(os.path.dirname(__file__)))
+                            backlog_dir = app_dir / "backlog"
+                            backlog_dir.mkdir(exist_ok=True)
+                            
+                            target_backlog_path = backlog_dir / file_path.name
+                            shutil.move(str(file_path), str(target_backlog_path))
+                            self.log_callback(f"[{final_filename}] ⏳ {match_species} -> Ins Backlog verschoben")
+                        except Exception as e:
+                            self.log_callback(f"[{final_filename}] ❌ Fehler beim Verschieben (Backlog): {e}")
+                        continue
+                
                 if greylist_active and species in current_greylist:
                     try:
                         if os.path.exists(file_path):
@@ -403,27 +464,6 @@ class FolderMonitor:
                             self.log_callback(f"[{final_filename}] 🗑️ {species} ({conf_percent}%) -> Gelöscht ({reason})")
                     except: pass
                     continue 
-
-                if rename_active:
-                    try:
-                        if not os.path.exists(file_path): continue
-                        file_ext = file_path.suffix
-                        if conf_percent >= current_threshold:
-                            clean_species = species.replace(" ", "_")
-                        else:
-                            clean_species = "Unbekannt"
-                        while True:
-                            rand_id = random.randint(100000, 999999)
-                            new_name = f"{rand_id}_{clean_species}{file_ext}"
-                            new_full_path = file_path.parent / new_name
-                            if not new_full_path.exists():
-                                break
-                        old_name = file_path.name
-                        os.rename(file_path, new_full_path)
-                        final_filename = new_name
-                        file_path = new_full_path 
-                        self.log_callback(f"[{old_name}] ✏️ Umbenannt zu: {final_filename}")
-                    except: pass
 
                 try:
                     if conf_percent >= current_threshold:
@@ -1124,8 +1164,9 @@ class AppGUI:
     def __init__(self, root):
         self.root = root
         self.root.title(f"Birds-AI-Classifier (800x448) - {APP_VERSION}")
-        self.root.geometry("600x850") 
+        self.root.geometry("780x850") 
         self.greylist = load_greylist()
+        self.backlog = load_backlog()
         self.blacklist = load_blacklist()
         self.settings = load_settings()
         saved_threshold = self.settings.get("threshold", 70)
@@ -1140,6 +1181,8 @@ class AppGUI:
                                      lambda: self.delete_var.get(),
                                      lambda: self.greylist_var.get(), 
                                      lambda: self.greylist,
+                                     lambda: self.backlog_var.get(),
+                                     lambda: self.backlog,
                                      lambda: self.blacklist,
                                      self.update_duration_display
                                      )
@@ -1160,7 +1203,7 @@ class AppGUI:
         tk.Button(frame_folder, text="Durchsuchen...", command=self.select_folder).pack(side=tk.LEFT)
         self.recursive_var = tk.BooleanVar(value=True)
         tk.Checkbutton(root, text="Unterordner ebenfalls durchsuchen (Rekursiv)", 
-                       variable=self.recursive_var).pack(pady=2, anchor=tk.W, padx=20)
+                       variable=self.recursive_var, font=("Segoe UI", 10)).pack(pady=2, anchor=tk.W, padx=20)
 
         frame_settings = tk.LabelFrame(root, text="KI Einstellungen", padx=10, pady=10)
         frame_settings.pack(pady=10, padx=20, fill="x")
@@ -1174,13 +1217,24 @@ class AppGUI:
 
         self.rename_var = tk.BooleanVar(value=True)
         tk.Checkbutton(frame_settings, text="Dateien umbenennen (Random + Class)", 
-                       variable=self.rename_var, fg="blue").pack(anchor=tk.W, pady=5)
+                       variable=self.rename_var, fg="blue", font=("Segoe UI", 10)).pack(anchor=tk.W, pady=5)
+
+        frame_backlog = tk.Frame(frame_settings)
+        frame_backlog.pack(anchor=tk.W, pady=5, fill="x")
+        self.backlog_var = tk.BooleanVar(value=True)
+        cb_bl = tk.Checkbutton(frame_backlog, text="Backlog: Verschieben in backlog/ Ordner (ohne DB-Eintrag)", 
+                       variable=self.backlog_var, fg="#d2691e", font=("Segoe UI", 10))
+        cb_bl.pack(side=tk.LEFT)
+        btn_bl_select = tk.Button(frame_backlog, text="[ Backlog Konfig ]", 
+                                  command=lambda: self.open_list_config_window("Backlog", self.backlog, save_backlog), 
+                                  font=("Arial", 8))
+        btn_bl_select.pack(side=tk.LEFT, padx=10)
 
         frame_greylist = tk.Frame(frame_settings)
         frame_greylist.pack(anchor=tk.W, pady=5, fill="x")
         self.greylist_var = tk.BooleanVar(value=True)
         cb_gl = tk.Checkbutton(frame_greylist, text="Greylist: Löschen + mit Datenbankeintrag)", 
-                       variable=self.greylist_var, fg="darkred", font=("Arial", 9, "bold"))
+                       variable=self.greylist_var, fg="darkred", font=("Segoe UI", 10))
         cb_gl.pack(side=tk.LEFT)
         btn_gl_select = tk.Button(frame_greylist, text="[ Greylist Konfig ]", 
                                   command=lambda: self.open_list_config_window("Greylist", self.greylist, save_greylist), 
@@ -1191,7 +1245,7 @@ class AppGUI:
         frame_trash.pack(anchor=tk.W, pady=5, fill="x")
         self.delete_var = tk.BooleanVar(value=True)
         tk.Checkbutton(frame_trash, text="Blacklist: Löschen + ohne Datenbankeintrag", 
-                       variable=self.delete_var, fg="red").pack(side=tk.LEFT)
+                       variable=self.delete_var, fg="red", font=("Segoe UI", 10)).pack(side=tk.LEFT)
         btn_trash_config = tk.Button(frame_trash, text="[ Blacklist Konfig ]", 
                                      command=lambda: self.open_list_config_window("Blacklist (Trash)", self.blacklist, save_blacklist), 
                                      font=("Arial", 8))
@@ -1200,7 +1254,7 @@ class AppGUI:
         frame_ping = tk.Frame(frame_settings)
         frame_ping.pack(anchor=tk.W, pady=5, fill="x")
         self.ping_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(frame_ping, text="Kamera IP anpingen", variable=self.ping_var, fg="darkgreen").pack(side=tk.LEFT)
+        tk.Checkbutton(frame_ping, text="Kamera IP anpingen", variable=self.ping_var, fg="darkgreen", font=("Segoe UI", 10)).pack(side=tk.LEFT)
 
         frame_controls = tk.Frame(root)
         frame_controls.pack(pady=10)
@@ -1214,7 +1268,7 @@ class AppGUI:
         self.lbl_size = tk.Label(root, text="Ordnergröße: 0.00 MB", font=("Arial", 10, "bold"), fg="blue")
         self.lbl_size.pack(pady=5)
         tk.Label(root, text="Status-Log:").pack(anchor=tk.W, padx=20)
-        self.log_text = tk.Text(root, height=10, width=70, state='disabled')
+        self.log_text = tk.Text(root, height=10, width=90, state='disabled')
         self.log_text.pack(pady=5)
         tk.Button(root, text="Log leeren", command=self.clear_log, font=("Arial", 8)).pack(pady=2)
         
@@ -1366,6 +1420,7 @@ class AppGUI:
             infos = []
             if self.rename_var.get(): infos.append("Rename")
             if self.delete_var.get(): infos.append(f"Blacklist ({len(self.blacklist)} Arten)")
+            if self.backlog_var.get(): infos.append(f"Backlog ({len(self.backlog)} Arten)")
             if self.greylist_var.get(): infos.append(f"Greylist ({len(self.greylist)} Arten)")
             info_str = ", ".join(infos) if infos else "Nur Erkennung"
             self.update_log(f"Service gestartet: {info_str}")
