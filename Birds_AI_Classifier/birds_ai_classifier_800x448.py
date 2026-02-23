@@ -1233,7 +1233,7 @@ class AppGUI:
         frame_greylist = tk.Frame(frame_settings)
         frame_greylist.pack(anchor=tk.W, pady=5, fill="x")
         self.greylist_var = tk.BooleanVar(value=True)
-        cb_gl = tk.Checkbutton(frame_greylist, text="Greylist: Löschen + Datenbankeintrag)", 
+        cb_gl = tk.Checkbutton(frame_greylist, text="Greylist: Löschen + Datenbankeintrag", 
                        variable=self.greylist_var, fg="darkred", font=("Segoe UI", 10))
         cb_gl.pack(side=tk.LEFT)
         btn_gl_select = tk.Button(frame_greylist, text="[ Greylist Konfig ]", 
