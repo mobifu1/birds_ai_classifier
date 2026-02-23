@@ -609,7 +609,7 @@ CSS_STYLE = """
         object-fit: contain; /* Icons bleiben ganz sichtbar */
         margin-right: 6px;
         border-radius: 3px;
-        background-color: #808080; /* Grau hinterlegt wie Hauptseite */
+        background-color: #ffffff; /* Weiß hinterlegt wie gewünscht */
     }
     .bird-icon-placeholder {
         width: 18px;
@@ -651,7 +651,7 @@ CSS_STYLE = """
     }
     
     .flex-center { display: flex; align-items: center; justify-content: flex-start; gap: 12px; }
-    .bird-icon { width: 24px; height: 24px; object-fit: contain; border-radius: 4px; background-color: #808080; }
+    .bird-icon { width: 24px; height: 24px; object-fit: contain; border-radius: 4px; background-color: #ffffff; }
 </style>
 """
 
