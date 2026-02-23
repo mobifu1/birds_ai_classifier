@@ -1222,7 +1222,7 @@ class AppGUI:
         frame_backlog = tk.Frame(frame_settings)
         frame_backlog.pack(anchor=tk.W, pady=5, fill="x")
         self.backlog_var = tk.BooleanVar(value=True)
-        cb_bl = tk.Checkbutton(frame_backlog, text="Backlog: Verschieben in backlog/ Ordner (ohne DB-Eintrag)", 
+        cb_bl = tk.Checkbutton(frame_backlog, text="Backlog: Verschieben - Datenbankeintrag", 
                        variable=self.backlog_var, fg="#d2691e", font=("Segoe UI", 10))
         cb_bl.pack(side=tk.LEFT)
         btn_bl_select = tk.Button(frame_backlog, text="[ Backlog Konfig ]", 
@@ -1233,7 +1233,7 @@ class AppGUI:
         frame_greylist = tk.Frame(frame_settings)
         frame_greylist.pack(anchor=tk.W, pady=5, fill="x")
         self.greylist_var = tk.BooleanVar(value=True)
-        cb_gl = tk.Checkbutton(frame_greylist, text="Greylist: Löschen + mit Datenbankeintrag)", 
+        cb_gl = tk.Checkbutton(frame_greylist, text="Greylist: Löschen + Datenbankeintrag)", 
                        variable=self.greylist_var, fg="darkred", font=("Segoe UI", 10))
         cb_gl.pack(side=tk.LEFT)
         btn_gl_select = tk.Button(frame_greylist, text="[ Greylist Konfig ]", 
@@ -1244,7 +1244,7 @@ class AppGUI:
         frame_trash = tk.Frame(frame_settings)
         frame_trash.pack(anchor=tk.W, pady=5, fill="x")
         self.delete_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(frame_trash, text="Blacklist: Löschen + ohne Datenbankeintrag", 
+        tk.Checkbutton(frame_trash, text="Blacklist: Löschen - Datenbankeintrag", 
                        variable=self.delete_var, fg="red", font=("Segoe UI", 10)).pack(side=tk.LEFT)
         btn_trash_config = tk.Button(frame_trash, text="[ Blacklist Konfig ]", 
                                      command=lambda: self.open_list_config_window("Blacklist (Trash)", self.blacklist, save_blacklist), 
