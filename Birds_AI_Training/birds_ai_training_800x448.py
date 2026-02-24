@@ -7,11 +7,16 @@ import random
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array, load_img
 
+# --- MATPLOTLIB FÜR GRAPHEN ---
+import matplotlib
+matplotlib.use('Agg') # Verhindert GUI-Fehler im reinen CMD-Fenster
+import matplotlib.pyplot as plt
+
 # --- MODELL: InceptionV3 (wie gewünscht) ---
 from tensorflow.keras.applications import InceptionV3
 from tensorflow.keras.applications.inception_v3 import preprocess_input
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Dropout
-from tensorflow.keras.models import Model
+from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 
@@ -26,15 +31,11 @@ MODEL_DATEI = "my_birds_modell_800x448.keras"
 LABELS_DATEI = "model_labels.json"
 
 # --- AUFLÖSUNG (Höhe, Breite) ---
-# Keras und TensorFlow nutzen oft (Height, Width)
 IMG_HEIGHT = 448
 IMG_WIDTH = 800
 IMG_SIZE = (IMG_HEIGHT, IMG_WIDTH) 
 # -----------------------------------------------------------------
 
-# VORSICHT: Bei InceptionV3 + 800x448 ist der VRAM-Verbrauch hoch!
-# Ich habe Batch Size auf 4 reduziert, um Abstürze zu vermeiden.
-# Falls du eine GPU mit >12GB VRAM hast, kannst du auf 8 erhöhen.
 BATCH_SIZE = 4
 EPOCHS = 40  
 
@@ -53,7 +54,7 @@ def erstelle_trainings_bericht(history):
     best_val_loss = min(val_loss)
 
     print("\n" + "="*50)
-    print("          TRAININGS-ANALYSE BERICHT          ")
+    print("         TRAININGS-ANALYSE BERICHT         ")
     print("="*50)
     print(f"Genauigkeit Training:                 {final_acc:.2f}%")
     print(f"Genauigkeit Validierung:              {final_val_acc:.2f}%")
@@ -71,6 +72,37 @@ def erstelle_trainings_bericht(history):
     else:
         print("⚪ ERGEBNIS OKAY.")
     print("="*50 + "\n")
+
+def speichere_trainings_graph(history):
+    """Speichert den Trainingsverlauf als PNG-Bild ab."""
+    print("Erstelle Trainings-Graph...")
+    plt.figure(figsize=(12, 5))
+
+    # 1. Graph: Accuracy
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['accuracy'], label='Training Accuracy', color='blue')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy', color='orange')
+    plt.title('Modell Genauigkeit')
+    plt.xlabel('Epoche')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.grid(True)
+
+    # 2. Graph: Loss
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['loss'], label='Training Loss', color='blue')
+    plt.plot(history.history['val_loss'], label='Validation Loss', color='orange')
+    plt.title('Modell Fehlerwert (Loss)')
+    plt.xlabel('Epoche')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+
+    # Speichern und schließen
+    plt.tight_layout()
+    plt.savefig('trainings_verlauf.png')
+    plt.close()
+    print("📈 Trainings-Graph wurde als 'trainings_verlauf.png' gespeichert.")
 
 def prepare_shuffled_dataset():
     """Erstellt eine Kopie des Datensatzes und passt die Größe an."""
@@ -93,7 +125,6 @@ def prepare_shuffled_dataset():
                 os.makedirs(target_subdir, exist_ok=True)
                 
                 try:
-                    # load_img erwartet target_size=(height, width)
                     img = load_img(os.path.join(subdir, file), target_size=IMG_SIZE)
                     img_array = img_to_array(img)
                     
@@ -116,9 +147,6 @@ def train():
     check_data_before_start()
     prepare_shuffled_dataset()
 
-    # Generator konfigurieren
-    # Da InceptionV3 sehr mächtig ist, nutzen wir starke Augmentation,
-    # um Overfitting bei den großen Bildern zu vermeiden.
     datagen = ImageDataGenerator(
         preprocessing_function=preprocess_input,
         rotation_range=20,      
@@ -133,19 +161,17 @@ def train():
     )
 
     print("Lade Bilder in Generator...")
-    # Generator für Training
     train_generator = datagen.flow_from_directory(
         DATASET_TEMP_PFAD,  
-        target_size=IMG_SIZE, # (448, 800)
+        target_size=IMG_SIZE,
         batch_size=BATCH_SIZE,
         class_mode='categorical',
         subset='training'
     )
 
-    # Generator für Validierung
     validation_generator = datagen.flow_from_directory(
         DATASET_TEMP_PFAD,
-        target_size=IMG_SIZE, # (448, 800)
+        target_size=IMG_SIZE,
         batch_size=BATCH_SIZE,
         class_mode='categorical',
         subset='validation'
@@ -161,37 +187,40 @@ def train():
         json.dump(labels, f)
     print(f"Klassen gefunden: {len(labels)}")
 
-    # --- MODELL-BAU: InceptionV3 ---
-    print(f"Erstelle InceptionV3 mit Input Shape ({IMG_HEIGHT}, {IMG_WIDTH}, 3)...")
-    
-    # input_shape=(Height, Width, Channels)
-    base_model = InceptionV3(
-        weights='imagenet', 
-        include_top=False, 
-        input_shape=(IMG_HEIGHT, IMG_WIDTH, 3)
-    )
-    
-    base_model.trainable = True
-    
-    # Fine-Tuning: Wir frieren die unteren Schichten ein
-    # Bei InceptionV3 frieren wir oft die ersten ~250 Layer ein, da es sehr tief ist
-    # Wir lassen die letzten 50 Layer trainierbar für deine Vögel
-    fine_tune_at = len(base_model.layers) - 50 
-    for layer in base_model.layers[:fine_tune_at]:
-        layer.trainable = False
+    # --- MODELL LADEN ODER NEU BAUEN ---
+    if os.path.exists(MODEL_DATEI):
+        print(f"\n✅ Gespeichertes Modell '{MODEL_DATEI}' gefunden!")
+        print("Lade bestehende Gewichte und setze das Training fort (Start bei T1)...")
+        model = load_model(MODEL_DATEI)
+        
+    else:
+        print(f"\n⚠️ Kein gespeichertes Modell gefunden.")
+        print(f"Erstelle NEUES InceptionV3 Modell (Start bei T0) mit Input Shape ({IMG_HEIGHT}, {IMG_WIDTH}, 3)...")
+        
+        base_model = InceptionV3(
+            weights='imagenet', 
+            include_top=False, 
+            input_shape=(IMG_HEIGHT, IMG_WIDTH, 3)
+        )
+        
+        base_model.trainable = True
+        
+        fine_tune_at = len(base_model.layers) - 50 
+        for layer in base_model.layers[:fine_tune_at]:
+            layer.trainable = False
 
-    x = base_model.output
-    x = GlobalAveragePooling2D()(x)
-    # Dropout etwas erhöht auf 0.5, da das Modell sehr groß ist für die Datenmenge
-    x = Dropout(0.5)(x) 
-    predictions = Dense(len(labels), activation='softmax')(x)
+        x = base_model.output
+        x = GlobalAveragePooling2D()(x)
+        x = Dropout(0.5)(x) 
+        predictions = Dense(len(labels), activation='softmax')(x)
 
-    model = Model(inputs=base_model.input, outputs=predictions)
+        model = Model(inputs=base_model.input, outputs=predictions)
 
-    model.compile(optimizer=Adam(learning_rate=1e-5), 
-                  loss='categorical_crossentropy', 
-                  metrics=['accuracy'])
+        model.compile(optimizer=Adam(learning_rate=1e-5), 
+                      loss='categorical_crossentropy', 
+                      metrics=['accuracy'])
 
+    # --- CALLBACKS & TRAINING ---
     callbacks_list = [
         EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=True, verbose=1),
         ModelCheckpoint(MODEL_DATEI, monitor='val_accuracy', save_best_only=True, mode='max', verbose=1),
@@ -209,6 +238,7 @@ def train():
 
     print("Training abgeschlossen.")
     erstelle_trainings_bericht(history)
+    speichere_trainings_graph(history) # <-- Hier wird das Bild gespeichert
     print(f"Das beste Modell liegt unter: {MODEL_DATEI}")
 
 if __name__ == "__main__":
