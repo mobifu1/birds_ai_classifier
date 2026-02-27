@@ -2,9 +2,37 @@
 ==================================================
           TRAININGS-ANALYSE BERICHT
 ==================================================
-Genauigkeit Training:                 94.96%
-Genauigkeit Validierung:              91.33%
-Abweichung (Gap):                     3.63%
+Genauigkeit Training:                 92.71%
+Genauigkeit Validierung:              95.97%
+Abweichung (Gap):                     3.26% 
 --------------------------------------------------
 🟢 GUTES ERGEBNIS! Robustes Modell.
 ==================================================
+
+Das ist eine der wichtigsten Fragen überhaupt! Wenn man auf die nackten Zahlen starrt, möchte man natürlich instinktiv 100 % Genauigkeit und 0.0 Loss sehen.
+
+Aber in der Praxis des Machine Learnings ist ein "perfektes" Ergebnis meistens ein Alarmzeichen. Wenn dein Modell 100 % erreicht, hat es die Bilder wahrscheinlich nur stur auswendig gelernt (Overfitting) und wird bei völlig neuen Vogelbildern kläglich versagen.
+
+Hier ist aufgeschlüsselt, wie ein realistisches, optimales Ergebnis für deinen InceptionV3-Klassifikator aussieht:
+
+1. Der "Sweet Spot" in harten Zahlen
+Für ein komplexes Problem wie die Vogel-Erkennung (wo sich viele Arten sehr ähnlich sehen) ist folgendes Ziel fantastisch:
+
+Validation Accuracy (val_accuracy): 85 % bis 95 % (Das bedeutet, das Modell erkennt 8,5 bis 9,5 von 10 völlig unbekannten Vögeln korrekt.)
+
+Validation Loss (val_loss): 0.1 bis 0.4
+(Ein sehr niedriger Fehlerwert. Er zeigt an, dass das Modell sich bei seinen Vorhersagen sehr sicher ist.)
+
+2. Die goldene Regel: Die Lücke (The Gap)
+Noch wichtiger als die reinen Zahlen ist das Verhältnis zwischen den Trainings-Daten und den Validierungs-Daten. Dein Modell ist dann optimal, wenn diese beiden Werte dicht beieinanderliegen.
+
+🟢 Optimal (Gut generalisiert): accuracy: 93 % | val_accuracy: 90 %
+Warum? Das Modell lernt hervorragend und wendet das Wissen fast genauso gut auf fremde Bilder an. Die Lücke ist klein (< 5 %).
+
+🔴 Schlecht (Overfitting): accuracy: 99 % | val_accuracy: 72 %
+Warum? Das Modell kennt die Trainingsbilder in- und auswendig (wie ein Schüler, der die Antworten eines Tests auswendig gelernt hat), versagt aber bei neuen Aufgaben. Die Lücke ist riesig.
+
+🟠 Schlecht (Underfitting): accuracy: 55 % | val_accuracy: 52 %
+Warum? Das Modell hat das Problem noch gar nicht richtig verstanden. Es braucht mehr Epochen, eine andere Lernrate oder mehr Daten.
+
+Ein idealer Verlauf sieht so aus: Sowohl der Trainings-Loss als auch der Validation-Loss sinken kontinuierlich ab und pendeln sich irgendwann auf einem niedrigen Niveau ein, ohne dass der Validation-Loss plötzlich wieder nach oben abhaut.
