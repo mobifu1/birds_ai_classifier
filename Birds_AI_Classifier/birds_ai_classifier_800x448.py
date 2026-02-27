@@ -407,7 +407,7 @@ class FolderMonitor:
                         if conf_percent >= current_threshold:
                             clean_species = species.replace(" ", "_")
                         else:
-                            clean_species = "Unbekannt"
+                            clean_species = f"Unbekannt_{species.replace(' ', '_')}_{conf_percent}pct"
                         while True:
                             rand_id = random.randint(100000, 999999)
                             new_name = f"{rand_id}_{clean_species}{file_ext}"
