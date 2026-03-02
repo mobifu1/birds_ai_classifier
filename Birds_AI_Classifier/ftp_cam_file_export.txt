@@ -10,8 +10,9 @@ Fokus manuell eingestellt auf 8-25cm.
 
 
 FTP-Server:
+Für Windows einen neuen Benutzer (Kamera + Password) einrichten
 Nutze Windows-IIS ohne TLS > FTP-Seite einrichten > FTP-Ordner einrichten
-Für das Python Script musst dazu auf deinem FTP-Server den FTP-Ordner im Netzwerk freigeben.
+Für das Python Script muss dazu auf dem FTP-Server ein FTP-Ordner im Netzwerk freigegeben werden
 FTP > PASV-Mode erfordert weitere Port-Freigaben (Range: 5000-5110) auf oberster Baumstruktur > vererbt sich dann
 Firewall > Portfreigabe der gesamten PASV-Range
 Dienste > Restart > Microsoft-FTP Server
