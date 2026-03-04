@@ -1,4 +1,4 @@
-# Ignoriere Download-Ordner mit den Rohdaten
+# Ignoriere Download-Ordner
 best_of/
 build/
 dist/
@@ -10,7 +10,7 @@ new_birds/
 test/
 backlog/
 
-# Ignoriere Modell-Files mit den Rohdaten
+# Ignoriere Modell-Files/Database-Files
 *.keras
 *.h5
 *.spec

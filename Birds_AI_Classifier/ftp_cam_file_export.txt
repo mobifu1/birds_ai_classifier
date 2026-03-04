@@ -8,7 +8,6 @@ FTP Upload > FTP-Config: kein TLS > Server-IP + User + Password > PASV-Mode (Pas
 Die Kamera sendet das Bild 800x448 BxH über WiFi zum FTP-Server und speichert es in dem definierten Ordner ab.
 Fokus manuell eingestellt auf 8-25cm.
 
-
 FTP-Server:
 Für Windows einen neuen Benutzer (Kamera + Password) einrichten
 Nutze Windows-IIS ohne TLS > FTP-Seite einrichten > FTP-Ordner einrichten
