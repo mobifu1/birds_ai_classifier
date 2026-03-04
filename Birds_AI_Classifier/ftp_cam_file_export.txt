@@ -16,6 +16,6 @@ FTP > PASV-Mode erfordert weitere Port-Freigaben (Range: 5000-5110) auf oberster
 Firewall > Portfreigabe der gesamten PASV-Range
 Dienste > Restart > Microsoft-FTP Server
 
-Birds_Ai-Classifier-Script:
+Birds_Ai_Classifier-Script:
 Den freigegeben FTP-Server-Ordner zusätzlich als Netzlaufwerk einbinden und diesen als Überwachungsordner nutzen.
 Das Python-Script greift dann neue Bilder sofort ab.

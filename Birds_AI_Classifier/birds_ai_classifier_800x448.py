@@ -1481,7 +1481,13 @@ class AppGUI:
 
     def update_duration_display(self, duration_ms):
         def _update():
-            self.lbl_duration.config(text=f"Bild-Verarbeitung: {duration_ms} ms")
+            if duration_ms > 1500:
+                color = "red"
+            elif duration_ms > 1000:
+                color = "orange"
+            else:
+                color = "gray"
+            self.lbl_duration.config(text=f"Bild-Verarbeitung: {duration_ms} ms", fg=color)
         self.root.after(0, _update)
 
     def update_ram_usage(self):

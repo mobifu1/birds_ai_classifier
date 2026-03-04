@@ -1,5 +1,5 @@
 # Python 3.10.11 installed Version
-# Python & Tensorflow needed 250MB-350MB RAM-Size
+# Python & Tensorflow needs 800MB RAM-Size
 tensorflow==2.20.0
 pillow>=9.0.0
 flask>=2.0.0
