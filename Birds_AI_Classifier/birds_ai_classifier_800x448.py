@@ -294,7 +294,8 @@ class FolderMonitor:
                  get_rename_callback, get_delete_callback, 
                  get_greylist_active_callback, get_greylist_callback,
                  get_backlog_active_callback, get_backlog_callback,
-                 get_blacklist_callback, update_duration_callback=None): 
+                 get_blacklist_callback, update_duration_callback=None,
+                 update_remaining_callback=None): 
         self.running = False
         self.folder_path = ""
         self.recursive = False 
@@ -310,6 +311,7 @@ class FolderMonitor:
         self.get_backlog_callback = get_backlog_callback
         self.get_blacklist = get_blacklist_callback
         self.update_duration_callback = update_duration_callback
+        self.update_remaining_callback = update_remaining_callback
         self.thread = None
 
     def start(self, folder_path, recursive=False): 
@@ -353,15 +355,21 @@ class FolderMonitor:
                 else:
                     files_found_iterators.append(path_obj.glob(ext))
         
-        new_files = []
+        new_files_set = set()
         for iterator in files_found_iterators:
             for file_path in iterator:
                 if not self.running: break
                 try:
                     c.execute("SELECT 1 FROM detections WHERE filename = ? LIMIT 1", (file_path.name,))
                     if c.fetchone() is None:
-                        new_files.append(file_path)
+                        # Use resolved path or absolute path string to ensure uniqueness
+                        new_files_set.add(str(file_path.resolve()))
                 except Exception: pass
+                
+        new_files = [Path(p) for p in new_files_set]
+
+        if self.update_remaining_callback:
+            self.update_remaining_callback(len(new_files))
 
         if len(new_files) > 0:
             files_to_process = new_files
@@ -376,7 +384,9 @@ class FolderMonitor:
 
             self.log_callback(f"{len(files_to_process)} neue Bilder gefunden. Verarbeite...")
             
-            for file_path in files_to_process:
+            for index, file_path in enumerate(files_to_process):
+                if self.update_remaining_callback:
+                    self.update_remaining_callback(len(files_to_process) - index)
                 if not self.running: break
                 if not os.path.exists(file_path): continue 
 
@@ -477,6 +487,9 @@ class FolderMonitor:
                         conn.commit()
                         self.log_callback(f"[{final_filename}] ❌ {species} ({conf_percent}%) -> Ignoriert (DB)")
                 except sqlite3.IntegrityError: pass 
+            
+            if self.update_remaining_callback:
+                self.update_remaining_callback(0)
         conn.close()
 
 # --- NEU: VERSION ---
@@ -1181,6 +1194,9 @@ class AppGUI:
         self.autostart_timer = None
         self.in_autostart_mode = False
 
+        self.current_size_mb = 0.0
+        self.current_remaining = 0
+
         self.monitor = FolderMonitor(self.update_log, 
                                      lambda: self.scale_threshold.get(),
                                      self.update_size_display,
@@ -1191,7 +1207,8 @@ class AppGUI:
                                      lambda: self.backlog_var.get(),
                                      lambda: self.backlog,
                                      lambda: self.blacklist,
-                                     self.update_duration_display
+                                     self.update_duration_display,
+                                     self.update_remaining_display
                                      )
         
         tk.Label(root, text="Vogel-Überwachung", font=("Arial", 16, "bold")).pack(pady=10)
@@ -1472,11 +1489,24 @@ class AppGUI:
             self.update_log(f"Sync Fehler: {e}")
 
     def update_size_display(self, size_mb):
+        self.current_size_mb = size_mb
+        self._refresh_size_label()
+
+    def update_remaining_display(self, remaining):
+        self.current_remaining = remaining
+        self._refresh_size_label()
+
+    def _refresh_size_label(self):
         def _update():
             color = "green"
-            if size_mb > 100: color = "orange"
-            if size_mb > 500: color = "red"
-            self.lbl_size.config(text=f"Ordnergröße: {size_mb:.2f} MB", fg=color)
+            if self.current_size_mb > 100: color = "orange"
+            if self.current_size_mb > 500: color = "red"
+            
+            text = f"Ordnergröße: {self.current_size_mb:.2f} MB"
+            if self.current_remaining > 0:
+                text += f" ({self.current_remaining} Bilder ausstehend)"
+                
+            self.lbl_size.config(text=text, fg=color)
         self.root.after(0, _update)
 
     def update_duration_display(self, duration_ms):
