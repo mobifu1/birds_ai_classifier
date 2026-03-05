@@ -319,6 +319,26 @@ class FolderMonitor:
         self.folder_path = folder_path
         self.recursive = recursive
         self.running = True
+        
+        # NEU: Lese- und Schreibrechte prüfen und protokollieren
+        has_read = os.access(self.folder_path, os.R_OK)
+        has_write = False
+        try:
+            test_file = os.path.join(self.folder_path, '.permission_test')
+            with open(test_file, 'w') as f:
+                f.write('test')
+            os.remove(test_file)
+            has_write = True
+        except Exception:
+            has_write = False
+
+        if not has_read:
+            self.log_callback(f"❌ FEHLER: Keine Leseberechtigung auf '{self.folder_path}'.")
+            self.log_callback("   -> Es können keine Bilder gefunden oder gelesen werden. (Nichts passiert)")
+        elif not has_write:
+            self.log_callback(f"⚠️ WARNUNG: Keine Schreibrechte oder Löschrechte auf '{self.folder_path}'.")
+            self.log_callback("   -> Umbenennen, Verschieben oder Löschen von Bildern wird fehlschlagen.")
+
         if self.ai is None:
             self.ai = BirdAI()
         self.thread = threading.Thread(target=self.loop, daemon=True)
@@ -429,7 +449,8 @@ class FolderMonitor:
                         final_filename = new_name
                         file_path = new_full_path 
                         self.log_callback(f"[{old_name}] ✏️ Umbenannt zu: {final_filename}")
-                    except: pass
+                    except Exception as e:
+                        self.log_callback(f"[{file_path.name}] ❌ Fehler beim Umbenennen: {e}")
 
                 if backlog_active:
                     is_low_confidence = (conf_percent < current_threshold)
@@ -455,7 +476,8 @@ class FolderMonitor:
                         if os.path.exists(file_path):
                             os.remove(file_path)
                             self.log_callback(f"[{final_filename}] 🚫 {species} -> Bild gelöscht (Greylist)")
-                    except: pass
+                    except Exception as e:
+                        self.log_callback(f"[{final_filename}] ❌ Fehler beim Löschen (Greylist): {e}")
                     try:
                         c.execute("INSERT INTO detections (filename, species, timestamp, confidence) VALUES (?, ?, ?, ?)",
                                   (final_filename, species, timestamp, conf))
@@ -472,7 +494,8 @@ class FolderMonitor:
                             os.remove(file_path)
                             reason = "Blacklist" if is_blacklisted else "Unsicher"
                             self.log_callback(f"[{final_filename}] 🗑️ {species} ({conf_percent}%) -> Gelöscht ({reason})")
-                    except: pass
+                    except Exception as e:
+                        self.log_callback(f"[{final_filename}] ❌ Fehler beim Löschen (Trash): {e}")
                     continue 
 
                 try:
