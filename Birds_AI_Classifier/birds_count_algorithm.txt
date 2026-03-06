@@ -1,0 +1,15 @@
+Wenn ein neues Bild reinkommt, fragt der Code zuerst: "Zu welcher Kategorie gehört der Vogel?"
+
+Wenn Hectic > Zähle sofort + 1 und fertig.
+
+Wenn Normal > Schau auf die Uhr. Wurde diese Art in den letzten 2 Minuten schon mal gesehen?
+		Wenn Ja: Ignorieren (gleicher Besuch).
+		Wenn Nein: Zähle + 1 und starte die 2 Minuten neu.
+
+Wenn Lazy? > Ist der Platz auf dem Futterhaus laut meinem Gedächtnis gerade von dieser Art "besetzt"?
+		Wenn Ja: Ignorieren. Erhöhe nur den "Fehl-Zähler", falls er auf dem Bild fehlt.
+		Wenn Nein: Zähle + 1 und trage diese Art als neuen "Besetzer" ein.
+
+
+Änderungen werden hierzu in species_categories.json vorgenommen.
+Hintergrund und Unbekannt werden nicht spezifiziert und sind vom Algorithmus ausgenommen.

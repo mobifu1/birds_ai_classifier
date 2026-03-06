@@ -180,6 +180,16 @@ def save_backlog(backlog_set):
             json.dump(list(backlog_set), f, ensure_ascii=False, indent=2)
     except: pass
 
+def load_categories():
+    cat_file = "species_categories.json"
+    if os.path.exists(cat_file):
+        try:
+            with open(cat_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
 # --- DATENBANK SETUP ---
 def init_db():
     # --- AUTO-ROTATION: JÄHRLICHES ARCHIVIEREN ---
@@ -295,7 +305,7 @@ class FolderMonitor:
                  get_greylist_active_callback, get_greylist_callback,
                  get_backlog_active_callback, get_backlog_callback,
                  get_blacklist_callback, update_duration_callback=None,
-                 update_remaining_callback=None): 
+                 update_remaining_callback=None, get_algo_active_callback=None): 
         self.running = False
         self.folder_path = ""
         self.recursive = False 
@@ -310,9 +320,13 @@ class FolderMonitor:
         self.get_backlog_active = get_backlog_active_callback
         self.get_backlog_callback = get_backlog_callback
         self.get_blacklist = get_blacklist_callback
+        self.get_algo_active = get_algo_active_callback if get_algo_active_callback else lambda: False
         self.update_duration_callback = update_duration_callback
         self.update_remaining_callback = update_remaining_callback
         self.thread = None
+        self.normal_timers = {}
+        self.lazy_occupier = None
+        self.categories = load_categories()
 
     def start(self, folder_path, recursive=False): 
         if not folder_path: return
@@ -429,6 +443,47 @@ class FolderMonitor:
                 conf_percent = int(conf * 100)
                 timestamp = get_original_date(str(file_path))
                 final_filename = file_path.name
+                
+                algo_active = self.get_algo_active()
+                algo_ignore = False
+                
+                if algo_active and conf_percent >= current_threshold and species not in ["Hintergrund", "Unbekannt"]:
+                    cat = self.categories.get(species, "normal").lower()
+                    if cat == "lazy":
+                        if self.lazy_occupier == species:
+                            algo_ignore = True
+                            self.log_callback(f"[{final_filename}] ⏳ {species} -> Ignoriert (Algorithmus: Lazy Occupier)")
+                        else:
+                            self.lazy_occupier = species
+                            
+                    elif cat == "normal":
+                        self.lazy_occupier = None # Futterplatz wieder frei
+                        now = time.time()
+                        last_seen = self.normal_timers.get(species, 0)
+                        if (now - last_seen) < 120:
+                            algo_ignore = True
+                            self.log_callback(f"[{final_filename}] ⏳ {species} -> Ignoriert (Algorithmus: Normal < 2 Min)")
+                        else:
+                            self.normal_timers[species] = now
+                            
+                    elif cat == "hectic":
+                        self.lazy_occupier = None # Futterplatz wieder frei
+                        # Wird sofort gezählt
+
+                if algo_ignore:
+                    # Bild ins Backlog verschieben als _algo_ignore und in DB nicht speichern
+                    try:
+                        app_dir = Path(os.path.abspath(os.path.dirname(__file__)))
+                        backlog_dir = app_dir / "backlog"
+                        backlog_dir.mkdir(exist_ok=True)
+                        file_ext = file_path.suffix
+                        rand_id = random.randint(100000, 999999)
+                        target_backlog_path = backlog_dir / f"{rand_id}_algo_ignore{file_ext}"
+                        shutil.move(str(file_path), str(target_backlog_path))
+                        self.log_callback(f"[{final_filename}] ⏳ Verschiebe ignoriertes Bild ins Backlog -> {target_backlog_path.name}")
+                    except Exception as e:
+                        self.log_callback(f"[{final_filename}] ❌ Fehler beim Verschieben (Algo-Backlog): {e}")
+                    continue
                 
                 if rename_active:
                     try:
@@ -1230,8 +1285,9 @@ class AppGUI:
                                      lambda: self.backlog_var.get(),
                                      lambda: self.backlog,
                                      lambda: self.blacklist,
-                                     self.update_duration_display,
-                                     self.update_remaining_display
+                                     update_duration_callback=self.update_duration_display,
+                                     update_remaining_callback=self.update_remaining_display,
+                                     get_algo_active_callback=lambda: self.algo_var.get()
                                      )
         
         tk.Label(root, text="Vogel-Überwachung", font=("Arial", 16, "bold")).pack(pady=10)
@@ -1301,7 +1357,14 @@ class AppGUI:
         frame_ping = tk.Frame(frame_settings)
         frame_ping.pack(anchor=tk.W, pady=5, fill="x")
         self.ping_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(frame_ping, text="Kamera IP anpingen", variable=self.ping_var, fg="darkgreen", font=("Segoe UI", 10)).pack(side=tk.LEFT)
+        tk.Checkbutton(frame_ping, text="Camera: ping", variable=self.ping_var, fg="darkgreen", font=("Segoe UI", 10)).pack(side=tk.LEFT)
+
+        frame_algo = tk.Frame(frame_settings)
+        frame_algo.pack(anchor=tk.W, pady=5, fill="x")
+        self.algo_var = tk.BooleanVar(value=self.settings.get("count_algo_active", True))
+        tk.Checkbutton(frame_algo, text="Countalgorithm: (Hectic/Normal/Lazy)", 
+                       variable=self.algo_var, fg="purple", font=("Segoe UI", 10), 
+                       command=lambda: save_setting("count_algo_active", self.algo_var.get())).pack(side=tk.LEFT)
 
         frame_controls = tk.Frame(root)
         frame_controls.pack(pady=10)
