@@ -7,7 +7,7 @@ Wenn Normal > Schau auf die Uhr. Wurde diese Art in den letzten 2 Minuten schon 
 		Wenn Nein: Zähle + 1 und starte die 2 Minuten neu.
 
 Wenn Lazy? > Ist der Platz auf dem Futterhaus laut meinem Gedächtnis gerade von dieser Art "besetzt"?
-		Wenn Ja: Ignorieren. Erhöhe nur den "Fehl-Zähler", falls er auf dem Bild fehlt.
+		Wenn Ja: Ignorieren.
 		Wenn Nein: Zähle + 1 und trage diese Art als neuen "Besetzer" ein.
 
 

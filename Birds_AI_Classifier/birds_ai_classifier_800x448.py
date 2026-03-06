@@ -447,28 +447,34 @@ class FolderMonitor:
                 algo_active = self.get_algo_active()
                 algo_ignore = False
                 
-                if algo_active and conf_percent >= current_threshold and species not in ["Hintergrund", "Unbekannt"]:
-                    cat = self.categories.get(species, "normal").lower()
-                    if cat == "lazy":
-                        if self.lazy_occupier == species:
-                            algo_ignore = True
-                            self.log_callback(f"[{final_filename}] ⏳ {species} -> Ignoriert (Algorithmus: Lazy Occupier)")
-                        else:
-                            self.lazy_occupier = species
-                            
-                    elif cat == "normal":
-                        self.lazy_occupier = None # Futterplatz wieder frei
-                        now = time.time()
-                        last_seen = self.normal_timers.get(species, 0)
-                        if (now - last_seen) < 120:
-                            algo_ignore = True
-                            self.log_callback(f"[{final_filename}] ⏳ {species} -> Ignoriert (Algorithmus: Normal < 2 Min)")
-                        else:
-                            self.normal_timers[species] = now
-                            
-                    elif cat == "hectic":
-                        self.lazy_occupier = None # Futterplatz wieder frei
-                        # Wird sofort gezählt
+                if algo_active:
+                    if conf_percent >= current_threshold:
+                        if species not in ["Hintergrund", "Unbekannt"]:
+                            cat = self.categories.get(species, "normal").lower()
+                            if cat == "lazy":
+                                if self.lazy_occupier == species:
+                                    algo_ignore = True
+                                    self.log_callback(f"[{final_filename}] ⏳ {species} -> Ignoriert (Algorithmus: Lazy Occupier)")
+                                else:
+                                    # Neue Vogelart (Lazy), also Platz neu besetzen
+                                    self.lazy_occupier = species
+                                    
+                            elif cat == "normal":
+                                self.lazy_occupier = None # Futterplatz wieder frei
+                                now = time.time()
+                                last_seen = self.normal_timers.get(species, 0)
+                                if (now - last_seen) < 120:
+                                    algo_ignore = True
+                                    self.log_callback(f"[{final_filename}] ⏳ {species} -> Ignoriert (Algorithmus: Normal < 2 Min)")
+                                else:
+                                    self.normal_timers[species] = now
+                                    
+                            elif cat == "hectic":
+                                self.lazy_occupier = None # Futterplatz wieder frei
+                                # Wird sofort gezählt
+                        elif species == "Hintergrund":
+                             # Hintergrund sicher erkannt -> Platz ist wieder frei
+                             self.lazy_occupier = None
 
                 if algo_ignore:
                     # Bild ins Backlog verschieben als _algo_ignore und in DB nicht speichern
@@ -1362,7 +1368,7 @@ class AppGUI:
         frame_algo = tk.Frame(frame_settings)
         frame_algo.pack(anchor=tk.W, pady=5, fill="x")
         self.algo_var = tk.BooleanVar(value=self.settings.get("count_algo_active", True))
-        tk.Checkbutton(frame_algo, text="Countalgorithm: (Hectic/Normal/Lazy)", 
+        tk.Checkbutton(frame_algo, text="Count Algorithm: (Hectic/Normal/Lazy)", 
                        variable=self.algo_var, fg="purple", font=("Segoe UI", 10), 
                        command=lambda: save_setting("count_algo_active", self.algo_var.get())).pack(side=tk.LEFT)
 
