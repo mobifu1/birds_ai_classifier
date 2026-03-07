@@ -409,7 +409,7 @@ class FolderMonitor:
             self.update_remaining_callback(len(new_files))
 
         if len(new_files) > 0:
-            files_to_process = new_files
+            files_to_process = sorted(new_files, key=lambda f: get_original_date(str(f)))
             current_threshold = self.get_threshold() 
             rename_active = self.get_rename_enabled() 
             delete_unsure_active = self.get_delete_enabled() 
@@ -451,6 +451,11 @@ class FolderMonitor:
                 algo_ignore = False
                 
                 if algo_active:
+                    try:
+                        img_time = time.mktime(datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S").timetuple())
+                    except Exception:
+                        img_time = time.time()
+
                     if conf_percent >= current_threshold:
                         if species not in ["Hintergrund", "Unbekannt"]:
                             cat = self.categories.get(species, "normal").lower()
@@ -464,7 +469,7 @@ class FolderMonitor:
                                     
                             elif cat == "normal":
                                 self.lazy_occupier = None # Futterplatz wieder frei
-                                now = time.time()
+                                now = img_time
                                 last_seen = self.normal_timers.get(species, 0)
                                 if (now - last_seen) < 120:
                                     algo_ignore = "time"

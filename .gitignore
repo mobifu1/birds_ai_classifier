@@ -15,5 +15,4 @@ backlog/
 *.h5
 *.spec
 *.db
-
-
+debug_log.txt
