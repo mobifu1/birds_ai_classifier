@@ -47,6 +47,9 @@ from tensorflow.keras.models import load_model
 import numpy as np
 
 # --- KONFIGURATION ---
+DEBUG = True  # Auf True setzen, um Log-Fenster-Inhalte in eine Datei zu schreiben
+DEBUG_FILE = "debug_log.txt"
+
 DB_FILE = "birds_stats.db"
 GREYLIST_FILE = "greylist.json" 
 BLACKLIST_FILE = "blacklist.json" 
@@ -453,7 +456,7 @@ class FolderMonitor:
                             cat = self.categories.get(species, "normal").lower()
                             if cat == "lazy":
                                 if self.lazy_occupier == species:
-                                    algo_ignore = True
+                                    algo_ignore = "occupy"
                                     self.log_callback(f"[{final_filename}] ⏳ {species} -> Ignoriert (Algorithmus: Lazy Occupier)")
                                 else:
                                     # Neue Vogelart (Lazy), also Platz neu besetzen
@@ -464,7 +467,7 @@ class FolderMonitor:
                                 now = time.time()
                                 last_seen = self.normal_timers.get(species, 0)
                                 if (now - last_seen) < 120:
-                                    algo_ignore = True
+                                    algo_ignore = "time"
                                     self.log_callback(f"[{final_filename}] ⏳ {species} -> Ignoriert (Algorithmus: Normal < 2 Min)")
                                 else:
                                     self.normal_timers[species] = now
@@ -477,14 +480,14 @@ class FolderMonitor:
                              self.lazy_occupier = None
 
                 if algo_ignore:
-                    # Bild ins Backlog verschieben als _algo_ignore und in DB nicht speichern
+                    # Bild ins Backlog verschieben als _algo_ignore_<reason> und in DB nicht speichern
                     try:
                         app_dir = Path(os.path.abspath(os.path.dirname(__file__)))
                         backlog_dir = app_dir / "backlog"
                         backlog_dir.mkdir(exist_ok=True)
                         file_ext = file_path.suffix
                         rand_id = random.randint(100000, 999999)
-                        target_backlog_path = backlog_dir / f"{rand_id}_algo_ignore{file_ext}"
+                        target_backlog_path = backlog_dir / f"{rand_id}_algo_ignore_{algo_ignore}{file_ext}"
                         shutil.move(str(file_path), str(target_backlog_path))
                         self.log_callback(f"[{final_filename}] ⏳ Verschiebe ignoriertes Bild ins Backlog -> {target_backlog_path.name}")
                     except Exception as e:
@@ -1652,6 +1655,15 @@ class AppGUI:
         self.log_text.insert(tk.END, message + "\n")
         self.log_text.see(tk.END)
         self.log_text.config(state='disabled')
+        
+        # Debug Logging in Datei
+        if DEBUG:
+            try:
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                with open(DEBUG_FILE, "a", encoding="utf-8") as f:
+                    f.write(f"[{timestamp}] {message}\n")
+            except Exception as e:
+                print(f"Fehler beim Schreiben in die Debug-Datei: {e}")
         
     def on_close(self):
         self.monitor.stop()
