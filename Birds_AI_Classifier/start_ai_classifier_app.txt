@@ -27,10 +27,7 @@ Gerne erkläre ich dir die genaue Reihenfolge, in der diese Schritte in deinem C
 Die Reihenfolge im Code ist wie folgt aufgebaut (ein Schritt nach dem anderen):
 
 1. Count Algorithm (Algorithmus)
-Dieses Feature wird als Allererstes geprüft. Der Code schaut in deine Kategorien ("lazy", "normal", "hectic") und den Zeitstempel. Stellt der Algorithmus fest, dass das Bild ignoriert werden soll (z.B. weil der gleiche "lazy"-Vogel immer noch da sitzt), wird es sofort in den 
-
-backlog
--Ordner verschoben (als _algo_ignore.jpg). Die Verarbeitung für dieses Bild bricht dann sofort ab. Alle nachfolgenden Schritte (Umbenennen, Blacklist etc.) passieren für dieses Bild nicht mehr.
+Dieses Feature wird als Allererstes geprüft. Der Code schaut in deine Kategorien ("lazy", "normal", "hectic") und den Zeitstempel. Stellt der Algorithmus fest, dass das Bild ignoriert werden soll (z.B. weil der gleiche "lazy"-Vogel immer noch da sitzt), wird es sofort in den backlog-Ordner verschoben (als 123456_algo_ignore.jpg). Die Verarbeitung für dieses Bild bricht dann sofort ab. Alle nachfolgenden Schritte (Umbenennen, Blacklist etc.) passieren für dieses Bild nicht mehr.
 
 2. Dateien umbenennen
 Hat das Bild den Algorithmus "überlebt" (d.h. es soll gezählt werden), ist dies der zweite Schritt. Das Bild wird basierend auf dem erkannten Vogel und der Wahrscheinlichkeit (Konfidenz) umbenannt (z.B. in 123456_Rotkehlchen.jpg oder 123456_Unbekannt_Spatz_50pct.jpg). Dies passiert vor allen anderen Filter-Listen, damit beim Verschieben oder Speichern der richtige neue Dateiname genutzt wird.

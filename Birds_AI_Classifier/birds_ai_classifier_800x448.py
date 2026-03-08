@@ -372,6 +372,23 @@ class FolderMonitor:
                 self.scan_folder()
                 current_size = get_dir_size_mb(self.folder_path, self.recursive)
                 self.update_size_callback(current_size)
+                
+                # Futterplatz Status exportieren
+                try:
+                    status = {
+                        "occupy": self.lazy_occupier,
+                        "time_locks": {}
+                    }
+                    now = time.time()
+                    for sp, last_seen in list(self.normal_timers.items()):
+                        remaining = int(120 - (now - last_seen))
+                        if remaining > 0:
+                            status["time_locks"][sp] = remaining
+                    with open("futterplatz_status.json", "w", encoding="utf-8") as f:
+                        json.dump(status, f)
+                except Exception as e:
+                    pass
+                    
             except Exception as e:
                 print(f"Fehler im Loop: {e}")
             for _ in range(CHECK_INTERVAL_SECONDS):
@@ -805,6 +822,17 @@ def dashboard():
     except:
         pass
         
+    futterplatz_occupy = None
+    futterplatz_time_locks = {}
+    try:
+        if os.path.exists("futterplatz_status.json"):
+            with open("futterplatz_status.json", "r", encoding="utf-8") as f:
+                fstat = json.load(f)
+                futterplatz_occupy = fstat.get("occupy", None)
+                futterplatz_time_locks = fstat.get("time_locks", {})
+    except:
+        pass
+        
     total_count = df['count'].sum() if not df.empty else 0
     today_total = df['today_count'].sum() if not df.empty else 0
     unknown_percent_str = "0.0 %"
@@ -869,11 +897,30 @@ def dashboard():
                 <div class="last-info" style="font-size:1.2em;color:#81d4fa;">📸 Letzte Sichtung: <strong>{{ last_entry.species }}</strong></div>
                 <div>Zeit: {{ last_entry.timestamp }} | Konfidenz: {{ last_entry.confidence }}%</div>
                 <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+                    <!-- NEU: Futterplatz Status (Links) -->
+                    <div style="display: flex; flex-direction: column; align-items: center; min-width: 120px; background: #1e1e1e; padding: 10px; border-radius: 8px; border: 1px solid #333;">
+                        <div style="margin-bottom: 5px; font-weight: bold; color: #81d4fa; border-bottom: 1px solid #444; padding-bottom: 3px; width: 100%;">Futterplatz</div>
+                        {% if futterplatz_occupy %}
+                            <div style="color: #ff9800; font-weight: bold; margin-top: 5px;">Besetzt<br><small style="color: #dddddd;">({{ futterplatz_occupy }})</small></div>
+                        {% else %}
+                            <div style="color: #00e676; font-weight: bold; margin-top: 5px;">Frei</div>
+                        {% endif %}
+                        
+                        {% if futterplatz_time_locks %}
+                            <div style="margin-top: 10px; font-size: 0.85em; color: #aaa; width: 100%;">
+                                <div style="font-weight: bold; color: #ccc; margin-bottom: 3px;">Sperre (Time):</div>
+                                {% for sp, rem in futterplatz_time_locks.items() %}
+                                    <div style="display: flex; justify-content: space-between; gap: 5px;"><span>{{ sp }}:</span> <span style="color:#ffb74d;">{{ rem }}s</span></div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                
                     <img src="{{ url_for('static', filename='last_detection.jpg') }}?t={{ ts }}" alt="Warte auf Bild...">
                     {% if ping_active %}
                         <div style="display: flex; flex-direction: column; align-items: center;">
                             <div style="width: 20px; height: 20px; border-radius: 50%; background-color: {% if camera_online %}#00e676{% else %}#ff1744{% endif %}; box-shadow: 0 0 10px {% if camera_online %}#00e676{% else %}#ff1744{% endif %};"></div>
-                            <small style="color: #aaa; margin-top: 5px;">Kamera</small>
+                            <small style="color: #aaa; margin-top: 5px;">Kamera Status</small>
                         </div>
                     {% endif %}
                 </div>
@@ -933,7 +980,9 @@ def dashboard():
                                   ts=timestamp_now,
                                   version=APP_VERSION,
                                   ping_active=ping_active,
-                                  camera_online=camera_online)
+                                  camera_online=camera_online,
+                                  futterplatz_occupy=futterplatz_occupy,
+                                  futterplatz_time_locks=futterplatz_time_locks)
 
 @app.route('/weekly')
 def weekly_stats():
