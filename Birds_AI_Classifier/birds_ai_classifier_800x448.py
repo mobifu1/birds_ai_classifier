@@ -808,7 +808,15 @@ def dashboard():
             df['count'] = pd.to_numeric(df['count'])
             df['today_count'] = pd.to_numeric(df['today_count']).fillna(0).astype(int)
             df = df.sort_values(by='count', ascending=False)
-    except: df = pd.DataFrame()
+            
+        # NEU: Neue Arten von heute finden (Erstsichtung)
+        cursor.execute(f"SELECT species FROM detections GROUP BY species HAVING MIN(timestamp) LIKE '{today_str}%'")
+        new_species_raw = [r[0] for r in cursor.fetchall()]
+        new_species_today = [sp for sp in new_species_raw if sp not in ('Unbekannt', 'IGNORED_LOW_CONFIDENCE')]
+            
+    except: 
+        df = pd.DataFrame()
+        new_species_today = []
     finally: conn.close()
         
     ping_active = False
@@ -897,23 +905,38 @@ def dashboard():
                 <div class="last-info" style="font-size:1.2em;color:#81d4fa;">📸 Letzte Sichtung: <strong>{{ last_entry.species }}</strong></div>
                 <div>Zeit: {{ last_entry.timestamp }} | Konfidenz: {{ last_entry.confidence }}%</div>
                 <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
-                    <!-- NEU: Futterplatz Status (Links) -->
-                    <div style="display: flex; flex-direction: column; align-items: center; min-width: 120px; background: #1e1e1e; padding: 10px; border-radius: 8px; border: 1px solid #333;">
-                        <div style="margin-bottom: 5px; font-weight: bold; color: #81d4fa; border-bottom: 1px solid #444; padding-bottom: 3px; width: 100%;">Futterplatz</div>
-                        {% if futterplatz_occupy %}
-                            <div style="color: #ff9800; font-weight: bold; margin-top: 5px;">Besetzt<br><small style="color: #dddddd;">({{ futterplatz_occupy }})</small></div>
-                        {% else %}
-                            <div style="color: #00e676; font-weight: bold; margin-top: 5px;">Frei</div>
-                        {% endif %}
+                    <!-- Pokal und Futterplatz Container (Links) -->
+                    <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
                         
-                        {% if futterplatz_time_locks %}
-                            <div style="margin-top: 10px; font-size: 0.85em; color: #aaa; width: 100%;">
-                                <div style="font-weight: bold; color: #ccc; margin-bottom: 3px;">Sperre (Time):</div>
-                                {% for sp, rem in futterplatz_time_locks.items() %}
-                                    <div style="display: flex; justify-content: space-between; gap: 5px;"><span>{{ sp }}:</span> <span style="color:#ffb74d;">{{ rem }}s</span></div>
-                                {% endfor %}
-                            </div>
+                        {% if new_species_today %}
+                        <!-- NEU: Pokal für Erstsichtung heute -->
+                        <div style="background: linear-gradient(145deg, #ffd700, #ffb300); color: #000; padding: 10px 15px; border-radius: 8px; font-weight: bold; text-align: center; border: 2px solid #b8860b; box-shadow: 0 4px 8px rgba(0,0,0,0.3); min-width: 120px;">
+                            <div style="font-size: 1.5em; margin-bottom: 5px;">🏆</div>
+                            <div style="font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px;">Neue Art heute!</div>
+                            {% for sp in new_species_today %}
+                                <div style="color: #d84315; font-size: 1.1em; margin-top: 3px;">{{ sp }}</div>
+                            {% endfor %}
+                        </div>
                         {% endif %}
+
+                        <!-- Futterplatz Status -->
+                        <div style="display: flex; flex-direction: column; align-items: center; min-width: 120px; background: #1e1e1e; padding: 10px; border-radius: 8px; border: 1px solid #333;">
+                            <div style="margin-bottom: 5px; font-weight: bold; color: #81d4fa; border-bottom: 1px solid #444; padding-bottom: 3px; width: 100%;">Futterplatz</div>
+                            {% if futterplatz_occupy %}
+                                <div style="color: #ff9800; font-weight: bold; margin-top: 5px;">Besetzt<br><small style="color: #dddddd;">({{ futterplatz_occupy }})</small></div>
+                            {% else %}
+                                <div style="color: #00e676; font-weight: bold; margin-top: 5px;">Frei</div>
+                            {% endif %}
+                            
+                            {% if futterplatz_time_locks %}
+                                <div style="margin-top: 10px; font-size: 0.85em; color: #aaa; width: 100%;">
+                                    <div style="font-weight: bold; color: #ccc; margin-bottom: 3px;">Sperre (Time):</div>
+                                    {% for sp, rem in futterplatz_time_locks.items() %}
+                                        <div style="display: flex; justify-content: space-between; gap: 5px;"><span>{{ sp }}:</span> <span style="color:#ffb74d;">{{ rem }}s</span></div>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
                     </div>
                 
                     <img src="{{ url_for('static', filename='last_detection.jpg') }}?t={{ ts }}" alt="Warte auf Bild...">
@@ -982,7 +1005,8 @@ def dashboard():
                                   ping_active=ping_active,
                                   camera_online=camera_online,
                                   futterplatz_occupy=futterplatz_occupy,
-                                  futterplatz_time_locks=futterplatz_time_locks)
+                                  futterplatz_time_locks=futterplatz_time_locks,
+                                  new_species_today=new_species_today)
 
 @app.route('/weekly')
 def weekly_stats():
