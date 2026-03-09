@@ -12,5 +12,5 @@ Local and Standalone AI Bird Classifier
 
 
 
-!\[gui](https://github.com/mobifu1/birds\_ai\_classifier/blob/master/Birds\_AI\_Classifier/gui/main.jpg)
+![gui](https://github.com/mobifu1/birds\_ai\_classifier/blob/master/Birds\_AI\_Classifier/gui/main.jpg "main")
 
