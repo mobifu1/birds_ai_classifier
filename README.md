@@ -6,4 +6,11 @@ Local and Standalone AI Bird Classifier
 2. take the new trained model and let run the classifier with it
 3. start classifier, choose your folder with new unknown pics  > the classification will work
 4. the classifier app starts a webserver with analysed data at localhost:5000
-4. have fun with new birds or other things
+5. have fun with new birds or other things
+
+
+
+
+
+!\[gui](https://github.com/mobifu1/birds\_ai\_classifier/blob/master/Birds\_AI\_Classifier/gui/main.jpg)
+
