@@ -15,6 +15,7 @@ import gc
 import shutil 
 import psutil
 import subprocess
+import requests
 import platform
 
 # --- NEU: Pillow für EXIF-Daten ---
@@ -31,7 +32,7 @@ import matplotlib.pyplot as plt
 # System
 
 # Web & Data
-from flask import Flask, render_template_string, request, url_for
+from flask import Flask, render_template_string, jsonify, request, send_file, url_for, render_template
 import pandas as pd
 
 # AI (TensorFlow)
@@ -49,6 +50,7 @@ DEBUG = True  # Auf True setzen, um Log-Fenster-Inhalte in eine Datei zu schreib
 DEBUG_FILE = "debug_log.txt"
 
 DB_FILE = "birds_stats.db"
+WEATHER_CONFIG_FILE = "weather_config.json"
 GREYLIST_FILE = "greylist.json" 
 BLACKLIST_FILE = "blacklist.json" 
 BACKLOG_FILE = "backlog.json"
@@ -600,62 +602,13 @@ class FolderMonitor:
         conn.close()
 
 # --- NEU: VERSION ---
-APP_VERSION = "Version 1.0-R"
+APP_VERSION = "Version 1.1-RC"
 
 # --- WEB SERVER (FLASK) ---
 app = Flask(__name__)
 
 # --- STYLE CSS CONSTANT ---
 CSS_STYLE = """
-<style>
-    body { 
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-        text-align: center; 
-        padding: 0; 
-        margin: 0;
-        background-color: #121212; 
-        color: #e0e0e0; 
-    }
-    .container { 
-        max-width: 1100px; 
-        margin: 20px auto; 
-        background: #1e1e1e; 
-        padding: 30px; 
-        border-radius: 12px; 
-        box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
-    }
-    .footer {
-        margin-top: 30px;
-        font-size: 0.8em;
-        color: #555;
-        border-top: 1px solid #333;
-        padding-top: 10px;
-    }
-    .header-container {
-        position: sticky;
-        top: 0;
-        background-color: #1e1e1e;
-        z-index: 1000;
-        padding: 10px 0;
-        border-bottom: 1px solid #333;
-        margin-bottom: 20px;
-    }
-    h1 { color: #ffffff; margin: 0; font-size: 1.8em; }
-    h2 { color: #4fc3f7; margin-top: 30px;}
-    
-    a.button-link {
-        display: inline-block;
-        margin: 10px;
-        padding: 10px 20px;
-        background: #0d47a1;
-        color: white;
-        text-decoration: none;
-        border-radius: 5px;
-        font-weight: bold;
-    }
-    a.button-link:hover { background: #1565c0; }
-
-    /* Chart / Images */
     .last-sighting { 
         background: #263238; 
         border: 2px solid #37474f; 
@@ -775,6 +728,176 @@ CSS_STYLE = """
 </style>
 """
 
+# --- VORHERSAGE FUNKTIONEN ---
+def load_weather_config():
+    if os.path.exists(WEATHER_CONFIG_FILE):
+        try:
+            with open(WEATHER_CONFIG_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Fehler beim Laden von {WEATHER_CONFIG_FILE}: {e}")
+    return {}
+
+def get_prediction_db_data(days=7):
+    conn = sqlite3.connect(DB_FILE, timeout=10)
+    cutoff_date = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d 00:00:00')
+    try:
+        query = f"""
+            SELECT 
+                CASE WHEN species = 'IGNORED_LOW_CONFIDENCE' THEN 'Unbekannt' ELSE species END as species,
+                timestamp,
+                confidence
+            FROM detections 
+            WHERE timestamp >= '{cutoff_date}'
+        """
+        df = pd.read_sql_query(query, conn)
+        if not df.empty:
+            df['datetime'] = pd.to_datetime(df['timestamp'])
+            df['hour'] = df['datetime'].dt.hour
+            df['date'] = df['datetime'].dt.date
+    except Exception as e:
+        print(f"Datenbankfehler: {e}")
+        df = pd.DataFrame()
+    finally:
+        conn.close()
+    return df
+
+def predict_rush_hour(df):
+    if df.empty: return None, ""
+    unique_days = df['date'].nunique()
+    if unique_days == 0: unique_days = 1
+    hourly_counts = df.groupby('hour').size() / unique_days
+    fig, ax = plt.subplots(figsize=(8, 4), facecolor='#1e1e1e')
+    ax.bar(hourly_counts.index, hourly_counts.values, color='#4fc3f7')
+    ax.set_title('Durchschnittliche Besuche pro Stunde (Rush-Hour)', color='white')
+    ax.set_xlabel('Uhrzeit', color='white')
+    ax.set_ylabel('Ø Besuche', color='white')
+    ax.set_xticks(range(24))
+    ax.set_xticklabels([f"{h:02d}:00" for h in range(24)], rotation=45)
+    ax.tick_params(colors='white')
+    ax.set_facecolor('#1e1e1e')
+    plt.tight_layout()
+    img = io.BytesIO()
+    fig.savefig(img, format='png', facecolor='#1e1e1e')
+    img.seek(0)
+    chart_url = base64.b64encode(img.getvalue()).decode()
+    plt.close(fig)
+    busiest_hour = hourly_counts.idxmax() if not hourly_counts.empty else "N/A"
+    return busiest_hour, chart_url
+
+def predict_species_probability(df, target_hour=None):
+    if df.empty: return {}, ""
+    if target_hour is None: target_hour = datetime.datetime.now().hour
+    hour_df = df[df['hour'] == target_hour]
+    if hour_df.empty: return {}, ""
+    species_counts = hour_df['species'].value_counts()
+    total = species_counts.sum()
+    probabilities = {sp: (count / total * 100) for sp, count in species_counts.items()}
+    top5 = species_counts.head(5)
+    if top5.sum() < total: top5['Andere'] = total - top5.sum()
+    fig, ax = plt.subplots(figsize=(6, 4), facecolor='#1e1e1e')
+    ax.pie(top5.values, labels=top5.index, autopct='%1.1f%%', startangle=90, textprops={'color':"w"})
+    ax.set_title(f'Wahrscheinlichkeit bis um {target_hour:02d}:00 Uhr', color='white')
+    plt.tight_layout()
+    img = io.BytesIO()
+    fig.savefig(img, format='png', facecolor='#1e1e1e')
+    img.seek(0)
+    chart_url = base64.b64encode(img.getvalue()).decode()
+    plt.close(fig)
+    return probabilities, chart_url
+
+def analyze_disturbance(df):
+    disturbers = ['Elster', 'Eichelhäher', 'Katze', 'Sperber']
+    if df.empty: return "Keine Daten."
+    df_sorted = df.sort_values('datetime').reset_index(drop=True)
+    events = []
+    for i in range(len(df_sorted)):
+        row = df_sorted.iloc[i]
+        if row['species'] in disturbers:
+            for j in range(i+1, len(df_sorted)):
+                next_row = df_sorted.iloc[j]
+                if next_row['species'] not in disturbers:
+                    gap = (next_row['datetime'] - row['datetime']).total_seconds() / 60.0
+                    events.append({'disturber': row['species'], 'gap_mins': gap})
+                    break
+    if not events: return "Bisher keine Störereignisse nachgewiesen."
+    avg_gap = sum([e['gap_mins'] for e in events]) / len(events)
+    return f"Im Schnitt wird das Futterhaus nach einem Störereignis für {avg_gap:.1f} Minuten gemieden."
+
+def fetch_weather_data(config):
+    if not config or "API-Key" not in config or "Station-ID" not in config:
+        return None, "Wetter-Konfiguration unvollständig."
+    api_key = config["API-Key"]
+    station_id = config["Station-ID"]
+    url = f"https://api.weather.com/v2/pws/observations/current?stationId={station_id}&format=json&units=m&apiKey={api_key}"
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            obs = data.get("observations", [{}])[0]
+            metric = obs.get("metric", {})
+            temp = metric.get("temp", "N/A")
+            precip = metric.get("precipRate", 0.0)
+            impact = "Normaler erwarteter Andrang."
+            if isinstance(temp, (int, float)) and temp < 5.0:
+                impact = f"Es ist kalt ({temp}°C). Rechne mit 30% mehr Futterhaus-Besuchen."
+            elif isinstance(precip, (int, float)) and precip > 0:
+                impact = f"Es regnet ({precip} mm/h). Vögel suchen verstärkt Schutz und Nahrung."
+            elif isinstance(temp, (int, float)) and temp > 25.0:
+                impact = f"Es ist warm ({temp}°C). Aktivität verlagert sich vermutlich in die frühen Morgenstunden."
+            return data, impact
+        else:
+            return None, f"API Fehler {response.status_code}: Bitte überprüfe den API-Key für Station {station_id}."
+    except Exception as e:
+        return None, f"Verbindungsfehler zur Wetter-API: {e}"
+
+@app.route('/prediction')
+def prediction_dashboard():
+    try:
+        days = int(request.args.get('days', 7))
+    except ValueError:
+        days = 7
+    if days < 1: days = 1
+    if days > 30: days = 30
+    
+    df = get_prediction_db_data(days)
+    weather_config = load_weather_config()
+    
+    busiest_hour, rush_hour_chart = predict_rush_hour(df)
+    
+    next_hour = (datetime.datetime.now().hour + 1) % 24
+    probs, prob_chart = predict_species_probability(df, target_hour=next_hour)
+    
+    weather_text = "Keine Wetterstation konfiguriert."
+    weather_data_html = ""
+    if weather_config:
+        w_data, w_impact = fetch_weather_data(weather_config)
+        weather_text = f"<strong>Vorhersage:</strong> {w_impact}"
+        if w_data:
+            metric = w_data.get("observations", [{}])[0].get("metric", {})
+            t = metric.get("temp", "N/A")
+            p = metric.get("precipRate", "0.0")
+            h = w_data.get("observations", [{}])[0].get("humidity", "N/A")
+            weather_data_html = f"<div style='margin-bottom: 10px; font-size: 0.9em; color: #aaa;'>Aktuell: {t}°C | Niederschlag: {p} mm/h | Luftfeuchtigkeit: {h}%</div>"
+        else:
+            weather_data_html = f"<div style='margin-bottom: 10px; font-size: 0.9em; color: #ff9800;'>Hinweis: {w_impact} <br>(Für echte Daten gültigen API-Key in weather_config.json eintragen)</div>"
+            weather_text = "<strong>Muster (Demo):</strong> An regnerischen oder sehr kalten Tagen weicht das Futterverhalten stark von sonnigen Tagen ab. Vögel fressen dann oft mehr und in konzentrierteren Abständen."
+    
+    disturbance_text = analyze_disturbance(df)
+    
+    return render_template('prediction.html', 
+                                  days=days, 
+                                  busiest_hour=busiest_hour,
+                                  rush_hour_chart=rush_hour_chart,
+                                  next_hour=next_hour,
+                                  probs=probs,
+                                  prob_chart=prob_chart,
+                                  weather_config=weather_config,
+                                  weather_data_html=weather_data_html,
+                                  weather_text=weather_text,
+                                  disturbance_text=disturbance_text,
+                                  version=APP_VERSION)
+
 @app.route('/')
 def dashboard():
     current_settings = load_settings()
@@ -878,127 +1001,13 @@ def dashboard():
 
     timestamp_now = int(time.time())
 
-    # HTML Template (Bereinigt)
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Vogel-Statistik</title>
-        <meta http-equiv="refresh" content="30">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-        {{ css_style|safe }}
-    </head>
-    <body>
-        <div class="container">
-            <div class="header-container">
-                <h1>📊 Vogel-Beobachtungs-Statistik (AI)</h1>
-                <div style="margin-top:10px;">
-                    <a href="/daily" class="button-link" style="background:#00838f;">📈 Tages-Ansicht (Verlauf)</a>
-                    <a href="/weekly" class="button-link">📅 Wochen-Ansicht (Heatmap)</a>
-                    <a href="/settings" class="button-link" style="background:#c2185b;">⚙️ Einstellungen & Steuerung</a>
-                </div>
-            </div>
-            
-            {% if last_entry %}
-            <div class="last-sighting">
-                <div class="last-info" style="font-size:1.2em;color:#81d4fa;">📸 Letzte Sichtung: <strong>{{ last_entry.species }}</strong></div>
-                <div>Zeit: {{ last_entry.timestamp }} | Konfidenz: {{ last_entry.confidence }}%</div>
-                <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
-                    <!-- Pokal und Futterplatz Container (Links) -->
-                    <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
-                        
-                        {% if new_species_today %}
-                        <!-- NEU: Pokal für Erstsichtung heute -->
-                        <div style="background: linear-gradient(145deg, #ffd700, #ffb300); color: #000; padding: 10px 15px; border-radius: 8px; font-weight: bold; text-align: center; border: 2px solid #b8860b; box-shadow: 0 4px 8px rgba(0,0,0,0.3); min-width: 120px;">
-                            <div style="font-size: 1.5em; margin-bottom: 5px;">🏆</div>
-                            <div style="font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px;">Neue Art heute!</div>
-                            {% for sp in new_species_today %}
-                                <div style="color: #d84315; font-size: 1.1em; margin-top: 3px;">{{ sp }}</div>
-                            {% endfor %}
-                        </div>
-                        {% endif %}
-
-                        <!-- Futterplatz Status -->
-                        <div style="display: flex; flex-direction: column; align-items: center; min-width: 120px; background: #1e1e1e; padding: 10px; border-radius: 8px; border: 1px solid #333;">
-                            <div style="margin-bottom: 5px; font-weight: bold; color: #81d4fa; border-bottom: 1px solid #444; padding-bottom: 3px; width: 100%;">Futterplatz</div>
-                            {% if futterplatz_occupy %}
-                                <div style="color: #ff9800; font-weight: bold; margin-top: 5px;">Besetzt<br><small style="color: #dddddd;">({{ futterplatz_occupy }})</small></div>
-                            {% else %}
-                                <div style="color: #00e676; font-weight: bold; margin-top: 5px;">Frei</div>
-                            {% endif %}
-                            
-                            {% if futterplatz_time_locks %}
-                                <div style="margin-top: 10px; font-size: 0.85em; color: #aaa; width: 100%;">
-                                    <div style="font-weight: bold; color: #ccc; margin-bottom: 3px;">Sperre (Time):</div>
-                                    {% for sp, rem in futterplatz_time_locks.items() %}
-                                        <div style="display: flex; justify-content: space-between; gap: 5px;"><span>{{ sp }}:</span> <span style="color:#ffb74d;">{{ rem }}s</span></div>
-                                    {% endfor %}
-                                </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                
-                    <img src="{{ url_for('static', filename='last_detection.jpg') }}?t={{ ts }}" alt="Warte auf Bild...">
-                    {% if ping_active %}
-                        <div style="display: flex; flex-direction: column; align-items: center;">
-                            <div style="width: 20px; height: 20px; border-radius: 50%; background-color: {% if camera_online %}#00e676{% else %}#ff1744{% endif %}; box-shadow: 0 0 10px {% if camera_online %}#00e676{% else %}#ff1744{% endif %};"></div>
-                            <small style="color: #aaa; margin-top: 5px;">Kamera Status</small>
-                        </div>
-                    {% endif %}
-                </div>
-            </div>
-            {% endif %}
-
-            {% if chart_url %}
-                <div style="margin:20px 0;">
-                    </div>
-                <img src="data:image/png;base64,{{ chart_url }}" alt="Diagramm" style="max-width:100%; height:auto; border-radius:8px;">
-                
-                <h2>Detaillierte Liste</h2>
-                <table>
-                    <thead><tr><th>Vogelart</th><th style="text-align: right;">Heute</th><th style="text-align: right;">Gesamt</th></tr></thead>
-                    <tbody>
-                    {% for index, row in df.iterrows() %}
-                    <tr>
-                        <td>
-                            <div class="flex-center">
-                                {% if row['species'] in icon_map %}
-                                    <img src="{{ url_for('static', filename=icon_map[row['species']]) }}" class="bird-icon">
-                                {% else %}
-                                    <div style="width:24px; height:24px; background:#555; border-radius:50%; text-align:center; line-height:24px; font-size:12px;">?</div>
-                                {% endif %}
-                                <span>{{ row['species'] }}</span>
-                            </div>
-                        </td>
-                        <td style="text-align: right; font-weight: bold;">{{ row['today_count'] }}</td>
-                        <td style="text-align: right; font-weight: bold;">{{ row['count'] }}</td>
-                    </tr>
-                    {% endfor %}
-                    </tbody>
-                    <tfoot>
-                        <tr style="background-color:#0d47a1; font-weight:bold;"><td>GESAMT</td><td style="text-align: right;">{{ today_total }}</td><td style="text-align: right;">{{ total_count }}</td></tr>
-                    </tfoot>
-                </table>
-            {% else %}
-                <p>Noch keine Daten vorhanden.</p>
-            {% endif %}
-            <p><a href="/" class="button-link" style="background:#546e7a;">Seite aktualisieren</a></p>
-            
-            <div class="footer">
-                {{ version }}
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    return render_template_string(html, 
+    return render_template('index.html',
                                   chart_url=chart_url, 
                                   df=df, 
                                   icon_map=icon_map, 
                                   total_count=total_count,
                                   today_total=today_total,
                                   last_entry=last_entry,
-                                  css_style=CSS_STYLE,
                                   ts=timestamp_now,
                                   version=APP_VERSION,
                                   ping_active=ping_active,
@@ -1111,36 +1120,7 @@ def weekly_stats():
         </div>
         """
 
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Wochen-Statistik (Heatmap)</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-        {{ css_style|safe }}
-    </head>
-    <body>
-        <div class="container" style="max-width: 95%;">
-            <div class="header-container">
-                <h1>📅 Wochen-Statistik (Heatmap)</h1>
-                <div style="margin-top:10px;">
-                    <a href="/" class="button-link" style="background:#546e7a;">&laquo; Zurück zur Übersicht</a>
-                </div>
-            </div>
-            
-            <p><strong>Relative Häufigkeit (Heatmap):</strong> Je heller das Grün, desto höher der Anteil dieser Art in der jeweiligen Woche.</p>
-            
-            {{ table_content|safe }}
-            
-            <br>
-            <div class="footer">
-                {{ version }}
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    return render_template_string(html, css_style=CSS_STYLE, table_content=html_table, version=APP_VERSION)
+    return render_template('weekly.html', table_content=html_table, version=APP_VERSION)
 
 @app.route('/daily')
 def daily_stats():
@@ -1229,107 +1209,7 @@ def daily_stats():
         chart_url = base64.b64encode(img.getvalue()).decode()
         plt.close(fig)
 
-    # 5. HTML Template für die Daily-Seite rendern
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Tages-Statistik (Daily)</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-        {% if is_today %}
-        <meta http-equiv="refresh" content="30"> <!-- Autorefresh alle 30s nur für den heutigen Tag -->
-        {% endif %}
-        {{ css_style|safe }}
-        <style>
-            .date-controls {
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                gap: 15px;
-                margin: 20px 0;
-                flex-wrap: wrap;
-                background: #263238;
-                padding: 15px;
-                border-radius: 8px;
-                border: 1px solid #37474f;
-            }
-            .date-input {
-                padding: 8px 12px;
-                background: #1e1e1e;
-                color: #fff;
-                border: 1px solid #555;
-                border-radius: 4px;
-                font-size: 1em;
-                font-family: inherit;
-            }
-            .date-input::-webkit-calendar-picker-indicator {
-                filter: invert(1);
-                cursor: pointer;
-            }
-            a.jumper-btn {
-                display: inline-block;
-                padding: 8px 15px;
-                background: #37474f;
-                color: white;
-                text-decoration: none;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 0.9em;
-                transition: background 0.2s;
-            }
-            a.jumper-btn:hover { background: #455a64; }
-        </style>
-    </head>
-    <body>
-        <div class="container" style="max-width: 95%;">
-            <div class="header-container">
-                <h1>📈 Tagesübersicht (Verlauf)</h1>
-                <div style="margin-top:10px;">
-                    <a href="/" class="button-link" style="background:#546e7a;">&laquo; Zurück zur Übersicht</a>
-                </div>
-            </div>
-            
-            <div class="date-controls">
-                <a href="/daily?date={{ prev_date }}" class="jumper-btn">&laquo; {% if not is_today %}Vorheriger Tag{% else %}Gestern{% endif %}</a>
-                
-                <input type="date" class="date-input" value="{{ selected_date_str }}" max="{{ today_str }}" id="datePicker">
-                
-                {% if not is_today %}
-                <a href="/daily?date={{ next_date }}" class="jumper-btn">Nächster Tag &raquo;</a>
-                <a href="/daily?date={{ today_str }}" class="jumper-btn" style="background: #00838f;">Heute</a>
-                {% endif %}
-            </div>
-            
-            <script>
-                document.getElementById('datePicker').addEventListener('change', function() {
-                    window.location.href = '/daily?date=' + this.value;
-                });
-            </script>
-            
-            <p>Sichtungen der Vogelarten im Verlauf des Tages ({% if is_today %}Heute, {% endif %}{{ selected_date_str }}).</p>
-            
-            <div style="font-size: 1.5em; font-weight: bold; margin: 15px 0; color: #81d4fa;">
-                &sum; Gesamtsumme: {{ total_birds_day }}
-            </div>
-            
-            {% if chart_url %}
-                <div style="text-align:center; margin-top: 20px;">
-                    <img src="data:image/png;base64,{{ chart_url }}" alt="Daily Chart" style="max-width:100%; height:auto; border-radius:8px; border: 1px solid #333;">
-                </div>
-            {% else %}
-                <p style="color: #ff9800; font-weight:bold;">An diesem Tag ({{ selected_date_str }}) wurden keine Vögel gesichtet.</p>
-            {% endif %}
-            
-            <br>
-            <div class="footer">
-                {{ version }}
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    return render_template_string(html, 
-                                  css_style=CSS_STYLE, 
+    return render_template('daily.html', 
                                   chart_url=chart_url, 
                                   version=APP_VERSION,
                                   selected_date_str=selected_date_str,

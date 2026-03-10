@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Vogel-Statistik</title>
+    <meta http-equiv="refresh" content="30">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <div class="header-container">
+            <h1>📊 Vogel-Beobachtungs-Statistik (AI)</h1>
+            <div style="margin-top:10px;">
+                <a href="/daily" class="button-link" style="background:#00838f;">📈 Tages-Ansicht</a>
+                <a href="/weekly" class="button-link">📅 Wochen-Ansicht</a>
+                <a href="/prediction" class="button-link" style="background:#fbc02d; color: #121212;">🔮
+                    Vorhersage</a>
+                <a href="/settings" class="button-link" style="background:#c2185b;">⚙️ Einstellungen</a>
+            </div>
+        </div>
+
+        {% if last_entry %}
+        <div class="last-sighting">
+            <div class="last-info" style="font-size:1.2em;color:#81d4fa;">📸 Letzte Sichtung: <strong>{{
+                    last_entry.species }}</strong></div>
+            <div>Zeit: {{ last_entry.timestamp }} | Konfidenz: {{ last_entry.confidence }}%</div>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+                <!-- Pokal und Futterplatz Container (Links) -->
+                <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
+
+                    {% if new_species_today %}
+                    <!-- NEU: Pokal für Erstsichtung heute -->
+                    <div
+                        style="background: linear-gradient(145deg, #ffd700, #ffb300); color: #000; padding: 10px 15px; border-radius: 8px; font-weight: bold; text-align: center; border: 2px solid #b8860b; box-shadow: 0 4px 8px rgba(0,0,0,0.3); min-width: 120px;">
+                        <div style="font-size: 1.5em; margin-bottom: 5px;">🏆</div>
+                        <div style="font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px;">Neue Art heute!
+                        </div>
+                        {% for sp in new_species_today %}
+                        <div style="color: #d84315; font-size: 1.1em; margin-top: 3px;">{{ sp }}</div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Futterplatz Status -->
+                    <div
+                        style="display: flex; flex-direction: column; align-items: center; min-width: 120px; background: #1e1e1e; padding: 10px; border-radius: 8px; border: 1px solid #333;">
+                        <div
+                            style="margin-bottom: 5px; font-weight: bold; color: #81d4fa; border-bottom: 1px solid #444; padding-bottom: 3px; width: 100%;">
+                            Futterplatz</div>
+                        {% if futterplatz_occupy %}
+                        <div style="color: #ff9800; font-weight: bold; margin-top: 5px;">Besetzt<br><small
+                                style="color: #dddddd;">({{ futterplatz_occupy }})</small></div>
+                        {% else %}
+                        <div style="color: #00e676; font-weight: bold; margin-top: 5px;">Frei</div>
+                        {% endif %}
+
+                        {% if futterplatz_time_locks %}
+                        <div style="margin-top: 10px; font-size: 0.85em; color: #aaa; width: 100%;">
+                            <div style="font-weight: bold; color: #ccc; margin-bottom: 3px;">Sperre (Time):</div>
+                            {% for sp, rem in futterplatz_time_locks.items() %}
+                            <div style="display: flex; justify-content: space-between; gap: 5px;"><span>{{ sp }}:</span>
+                                <span style="color:#ffb74d;">{{ rem }}s</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <img src="{{ url_for('static', filename='last_detection.jpg') }}?t={{ ts }}" alt="Warte auf Bild...">
+                {% if ping_active %}
+                <div style="display: flex; flex-direction: column; align-items: center;">
+                    <div
+                        style="width: 20px; height: 20px; border-radius: 50%; background-color: {% if camera_online %}#00e676{% else %}#ff1744{% endif %}; box-shadow: 0 0 10px {% if camera_online %}#00e676{% else %}#ff1744{% endif %};">
+                    </div>
+                    <small style="color: #aaa; margin-top: 5px;">Kamera Status</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if chart_url %}
+        <div style="margin:20px 0;">
+        </div>
+        <img src="data:image/png;base64,{{ chart_url }}" alt="Diagramm"
+            style="max-width:100%; height:auto; border-radius:8px;">
+
+        <h2>Detaillierte Liste</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Vogelart</th>
+                    <th style="text-align: right;">Heute</th>
+                    <th style="text-align: right;">Gesamt</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for index, row in df.iterrows() %}
+                <tr>
+                    <td>
+                        <div class="flex-center">
+                            {% if row['species'] in icon_map %}
+                            <img src="{{ url_for('static', filename=icon_map[row['species']]) }}" class="bird-icon">
+                            {% else %}
+                            <div
+                                style="width:24px; height:24px; background:#555; border-radius:50%; text-align:center; line-height:24px; font-size:12px;">
+                                ?</div>
+                            {% endif %}
+                            <span>{{ row['species'] }}</span>
+                        </div>
+                    </td>
+                    <td style="text-align: right; font-weight: bold;">{{ row['today_count'] }}</td>
+                    <td style="text-align: right; font-weight: bold;">{{ row['count'] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr style="background-color:#0d47a1; font-weight:bold;">
+                    <td>GESAMT</td>
+                    <td style="text-align: right;">{{ today_total }}</td>
+                    <td style="text-align: right;">{{ total_count }}</td>
+                </tr>
+            </tfoot>
+        </table>
+        {% else %}
+        <p>Noch keine Daten vorhanden.</p>
+        {% endif %}
+        <p><a href="/" class="button-link" style="background:#546e7a;">Seite aktualisieren</a></p>
+
+        <div class="footer">
+            {{ version }}
+        </div>
+    </div>
+</body>
+
+</html>

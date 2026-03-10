@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Tages-Statistik (Daily)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% if is_today %}
+    <meta http-equiv="refresh" content="30"> <!-- Autorefresh alle 30s nur für den heutigen Tag -->
+    {% endif %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .date-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+            background: #263238;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #37474f;
+        }
+
+        .date-input {
+            padding: 8px 12px;
+            background: #1e1e1e;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 4px;
+            font-size: 1em;
+            font-family: inherit;
+        }
+
+        .date-input::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
+
+        a.jumper-btn {
+            display: inline-block;
+            padding: 8px 15px;
+            background: #37474f;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+
+        a.jumper-btn:hover {
+            background: #455a64;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container" style="max-width: 95%;">
+        <div class="header-container">
+            <h1>📈 Tagesübersicht (Verlauf)</h1>
+            <div style="margin-top:10px;">
+                <a href="/" class="button-link" style="background:#546e7a;">&laquo; Zurück zur Übersicht</a>
+            </div>
+        </div>
+
+        <div class="date-controls">
+            <a href="/daily?date={{ prev_date }}" class="jumper-btn">&laquo; {% if not is_today %}Vorheriger Tag{% else
+                %}Gestern{% endif %}</a>
+
+            <input type="date" class="date-input" value="{{ selected_date_str }}" max="{{ today_str }}" id="datePicker">
+
+            {% if not is_today %}
+            <a href="/daily?date={{ next_date }}" class="jumper-btn">Nächster Tag &raquo;</a>
+            <a href="/daily?date={{ today_str }}" class="jumper-btn" style="background: #00838f;">Heute</a>
+            {% endif %}
+        </div>
+
+        <script>
+            document.getElementById('datePicker').addEventListener('change', function () {
+                window.location.href = '/daily?date=' + this.value;
+            });
+        </script>
+
+        <p>Sichtungen der Vogelarten im Verlauf des Tages ({% if is_today %}Heute, {% endif %}{{ selected_date_str }}).
+        </p>
+
+        <div style="font-size: 1.5em; font-weight: bold; margin: 15px 0; color: #81d4fa;">
+            &sum; Gesamtsumme: {{ total_birds_day }}
+        </div>
+
+        {% if chart_url %}
+        <div style="text-align:center; margin-top: 20px;">
+            <img src="data:image/png;base64,{{ chart_url }}" alt="Daily Chart"
+                style="max-width:100%; height:auto; border-radius:8px; border: 1px solid #333;">
+        </div>
+        {% else %}
+        <p style="color: #ff9800; font-weight:bold;">An diesem Tag ({{ selected_date_str }}) wurden keine Vögel
+            gesichtet.</p>
+        {% endif %}
+
+        <br>
+        <div class="footer">
+            {{ version }}
+        </div>
+    </div>
+</body>
+
+</html>

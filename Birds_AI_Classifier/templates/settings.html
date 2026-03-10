@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Einstellungen & Steuerung</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <a href="/" class="btn btn-gray btn-nav">&laquo; Zurück zum Dashboard</a>
+        <h1>⚙️ Einstellungen & Steuerung</h1>
+
+        <div class="status-panel">
+            <div class="status-item">
+                <div>Ordnergröße</div>
+                <div class="status-val" id="size-val">0.0 MB</div>
+            </div>
+            <div class="status-item">
+                <div>Ausstehend</div>
+                <div class="status-val" id="rem-val">0</div>
+            </div>
+            <div class="status-item">
+                <div>Bild-Dauer</div>
+                <div class="status-val" id="dur-val">0 ms</div>
+            </div>
+            <div class="status-item">
+                <div>RAM</div>
+                <div class="status-val" id="ram-val">0 MB</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Steuerung & Datenbank</h2>
+            <div style="display:flex; gap:10px; margin-bottom: 20px;">
+                <button class="btn btn-green" onclick="startMonitor()" id="btn-start">Überwachung Starten</button>
+                <button class="btn btn-red" onclick="stopMonitor()" id="btn-stop">Stoppen</button>
+                <button class="btn btn-orange" onclick="dbSync()">Datenbank zeitlich sortieren</button>
+                <button class="btn btn-red" disabled style="opacity: 0.5; cursor: not-allowed;" onclick="dbReset()">DB
+                    Reset (Alles löschen)</button>
+            </div>
+            <h3>Status-Log</h3>
+            <div class="log-window" id="log-window"></div>
+        </div>
+
+        <form id="settingsForm">
+            <div class="section">
+                <h2>KI Einstellungen</h2>
+                <div class="row">
+                    <label>Bilder-Ordner (Absoluter Pfad):</label>
+                    <input type="text" id="last_folder" value="{{ s.get('last_folder', '') }}" required>
+                </div>
+                <div class="row" style="justify-content: flex-start;">
+                    <input type="checkbox" id="recursive" {% if s.get('recursive', True) %}checked{% endif %}>
+                    <label>Unterordner durchsuchen (Rekursiv)</label>
+                </div>
+
+                <div class="row">
+                    <label>Kamera IP (für Ping):</label>
+                    <input type="text" id="camera_ip" value="{{ s.get('camera_ip', '') }}">
+                </div>
+
+                <div class="row">
+                    <label>Mindest-Wahrscheinlichkeit (Threshold %):</label>
+                    <input type="number" id="threshold" value="{{ s.get('threshold', 70) }}" min="0" max="100">
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="rename_active" {%
+                            if s.get('rename_active', True) %}checked{% endif %}> <label>Dateien umbenennen (Random +
+                            Class)</label></div>
+                    <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="ping_active" {% if
+                            s.get('ping_active', True) %}checked{% endif %}> <label style="color:darkgreen;">Camera:
+                            ping aktiv</label></div>
+                    <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="count_algo_active"
+                            {% if s.get('count_algo_active', True) %}checked{% endif %}> <label
+                            style="color:purple;">Count Algorithm (Hectic/Normal/Lazy)</label></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Listen Konfiguration (Filter)</h2>
+
+                <div class="row" style="justify-content: flex-start;">
+                    <input type="checkbox" id="backlog_active" {% if s.get('backlog_active', True) %}checked{% endif %}>
+                    <label style="color:#d2691e;">Backlog: Verschieben - KEIN Datenbankeintrag (für unbedeutende Arten /
+                        Algo-Ignores)</label>
+                </div>
+                <label>Backlog Arten (kommagetrennt):</label>
+                <textarea class="list-editor" id="backlog">{{ ','.join(app_controller.backlog) }}</textarea>
+
+                <hr style="border-color: #444; margin:20px 0;">
+
+                <div class="row" style="justify-content: flex-start;">
+                    <input type="checkbox" id="greylist_active" {% if s.get('greylist_active', True) %}checked{% endif
+                        %}>
+                    <label style="color:indianred;">Greylist: Löschen + Datenbankeintrag</label>
+                </div>
+                <label>Greylist Arten (kommagetrennt):</label>
+                <textarea class="list-editor" id="greylist">{{ ','.join(app_controller.greylist) }}</textarea>
+
+                <hr style="border-color: #444; margin:20px 0;">
+
+                <div class="row" style="justify-content: flex-start;">
+                    <input type="checkbox" id="delete_active" {% if s.get('delete_active', True) %}checked{% endif %}>
+                    <label style="color:red;">Blacklist (Trash): Löschen - KEIN Datenbankeintrag (z.B. Hintergrund,
+                        Unbekannt)</label>
+                </div>
+                <label>Blacklist Arten (kommagetrennt):</label>
+                <textarea class="list-editor" id="blacklist">{{ ','.join(app_controller.blacklist) }}</textarea>
+
+                <span class="help-text">Verfügbare Arten in DB: {{ db_species_str }}</span>
+            </div>
+
+            <button type="button" class="btn btn-blue" style="width:100%; padding: 15px; font-size:1.2em;"
+                onclick="saveSettings()">Einstellungen Speichern</button>
+        </form>
+    </div>
+
+    <script>
+        // Initiale UI
+        updateButtons();
+
+        function startMonitor() {
+            fetch('/api/control/start', { method: 'POST' })
+                .then(r => r.json())
+                .then(d => { if (d.error) alert(d.error); updateButtons(); });
+        }
+
+        function stopMonitor() {
+            fetch('/api/control/stop', { method: 'POST' })
+                .then(r => r.json())
+                .then(d => updateButtons());
+        }
+
+        function dbSync() {
+            if (confirm("Möchtest du wirklich die Datenbank zeitlich neu sortieren?")) {
+                fetch('/api/control/dbsync', { method: 'POST' }).then(r => r.json()).then(d => alert(d.msg));
+            }
+        }
+
+        function dbReset() {
+            if (confirm("WARNUNG! Möchtest du wirklich ALLE Daten der Datenbank und Statistiken verwerfen?")) {
+                if (confirm("Sicher? Letzte Warnung!")) {
+                    fetch('/api/control/dbreset', { method: 'POST' }).then(r => r.json()).then(d => alert(d.msg));
+                }
+            }
+        }
+
+        function saveSettings() {
+            const data = {
+                settings: {
+                    last_folder: document.getElementById('last_folder').value,
+                    recursive: document.getElementById('recursive').checked,
+                    camera_ip: document.getElementById('camera_ip').value,
+                    threshold: parseInt(document.getElementById('threshold').value),
+                    rename_active: document.getElementById('rename_active').checked,
+                    ping_active: document.getElementById('ping_active').checked,
+                    count_algo_active: document.getElementById('count_algo_active').checked,
+                    backlog_active: document.getElementById('backlog_active').checked,
+                    greylist_active: document.getElementById('greylist_active').checked,
+                    delete_active: document.getElementById('delete_active').checked
+                },
+                lists: {
+                    backlog: document.getElementById('backlog').value.split(',').map(s => s.trim()).filter(s => s),
+                    greylist: document.getElementById('greylist').value.split(',').map(s => s.trim()).filter(s => s),
+                    blacklist: document.getElementById('blacklist').value.split(',').map(s => s.trim()).filter(s => s)
+                }
+            };
+
+            fetch('/api/settings/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+                .then(res => res.json())
+                .then(data => alert(data.msg))
+                .catch(err => alert('Fehler beim Speichern!'));
+        }
+
+        function updateButtons() {
+            fetch('/api/status')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.running) {
+                        document.getElementById('btn-start').style.display = 'none';
+                        document.getElementById('btn-stop').style.display = 'inline-block';
+                    } else {
+                        document.getElementById('btn-start').style.display = 'inline-block';
+                        document.getElementById('btn-stop').style.display = 'none';
+                    }
+
+                    document.getElementById('size-val').innerText = data.size_mb.toFixed(2) + " MB";
+                    document.getElementById('rem-val').innerText = data.remaining;
+                    document.getElementById('dur-val').innerText = data.duration_ms + " ms";
+                    document.getElementById('ram-val').innerText = data.ram_mb.toFixed(1) + " MB";
+
+                    const logWin = document.getElementById('log-window');
+                    logWin.innerHTML = data.logs.join('<br>');
+                    logWin.scrollTop = logWin.scrollHeight;
+                });
+        }
+
+        // Poll Status Every 1.5 seconds
+        setInterval(updateButtons, 1500);
+    </script>
+</body>
+
+</html>

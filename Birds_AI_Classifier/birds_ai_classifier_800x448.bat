@@ -11,7 +11,6 @@ cd /d "C:\Users\Andreas\source\repos\Birds_AI_Classifier\Birds_AI_Classifier"
 
 REM Führe das Python-Skript aus
 python birds_ai_classifier_800x448.py
-python birds_ai_prediction.py
 
 REM Pausiere am Ende, damit das Fenster bei einem Fehler nicht sofort zugeht
 echo.
