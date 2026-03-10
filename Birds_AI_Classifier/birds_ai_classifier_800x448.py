@@ -1000,6 +1000,28 @@ def dashboard():
         plt.close(fig)
 
     timestamp_now = int(time.time())
+    
+    current_temp = None
+    try:
+        global last_weather_check, last_weather_temp
+        if 'last_weather_check' not in globals():
+            last_weather_check = 0
+            last_weather_temp = None
+        
+        if time.time() - last_weather_check > 300: # 5 Minuten Cache
+            w_config = load_weather_config()
+            if w_config:
+                w_data, _ = fetch_weather_data(w_config)
+                if w_data:
+                    metric = w_data.get("observations", [{}])[0].get("metric", {})
+                    last_weather_temp = metric.get("temp", None)
+                else:
+                    last_weather_temp = None
+            last_weather_check = time.time()
+            
+        current_temp = last_weather_temp
+    except Exception:
+        current_temp = None
 
     return render_template('index.html',
                                   chart_url=chart_url, 
@@ -1014,7 +1036,8 @@ def dashboard():
                                   camera_online=camera_online,
                                   futterplatz_occupy=futterplatz_occupy,
                                   futterplatz_time_locks=futterplatz_time_locks,
-                                  new_species_today=new_species_today)
+                                  new_species_today=new_species_today,
+                                  current_temp=current_temp)
 
 @app.route('/weekly')
 def weekly_stats():
