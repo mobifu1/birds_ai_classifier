@@ -16,3 +16,4 @@ backlog/
 *.spec
 *.db
 debug_log.txt
+weather_config.json
