@@ -1244,7 +1244,7 @@ def daily_stats():
 
 def run_flask():
     print(f"Starte Waitress Server auf Port {FLASK_PORT}...")
-    serve(app, host='0.0.0.0', port=FLASK_PORT)
+    serve(app, host='0.0.0.0', port=FLASK_PORT, threads=4)
 
 
 # --- NEU: Flask Request/Jsonify imports ---
