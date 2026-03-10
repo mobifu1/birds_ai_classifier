@@ -1459,8 +1459,8 @@ class AppGUI:
         self.btn_start.pack(side=tk.LEFT, padx=5)
         
         tk.Button(frame_controls, text="Statistik öffnen", command=self.open_web).pack(side=tk.LEFT, padx=5)
-        tk.Button(frame_controls, text="DB Sync", command=self.sync_database_orphans, bg="#ffdd99").pack(side=tk.LEFT, padx=5)
-        tk.Button(frame_controls, text="DB Reset", command=self.reset_database, bg="#ff9999").pack(side=tk.LEFT, padx=5)
+        tk.Button(frame_controls, text="DB Sync", command=self.sort_database_chronologically, bg="#ffdd99").pack(side=tk.LEFT, padx=5)
+        tk.Button(frame_controls, text="DB Reset", command=self.reset_database, bg="#ff9999", state=tk.DISABLED).pack(side=tk.LEFT, padx=5)
         
         self.lbl_size = tk.Label(root, text="Ordnergröße: 0.00 MB", font=("Arial", 10, "bold"), fg="blue")
         self.lbl_size.pack(pady=5)
@@ -1626,40 +1626,43 @@ class AppGUI:
             self.btn_start.config(text="Überwachung Starten", bg="#dddddd")
             self.update_log("Service gestoppt.")
 
-    def sync_database_orphans(self):
-        folder = self.entry_path.get()
-        if not folder or not os.path.exists(folder):
-            messagebox.showwarning("Fehler", "Bitte Ordner wählen.")
+    def sort_database_chronologically(self):
+        if not messagebox.askyesno("Sicherheitsabfrage", "Möchtest du wirklich die Datenbank zeitlich neu sortieren?"):
             return
-        if not messagebox.askyesno("Sicherheitsabfrage", f"Möchtest du wirklich die Datenbank mit dem Ordner '{folder}' abgleichen?\n\nWARNUNG: Einträge der Greylist (bereits gelöschte Dateien) werden hiermit aus der Statistik entfernt!"):
-            return
-        self.update_log("Starte Datenbank-Sync...")
-        real_files_set = set()
-        recursive = self.recursive_var.get()
-        extensions = ['*.jpg', '*.jpeg', '*.JPG', '*.png']
-        path_obj = Path(folder)
+        self.update_log("Starte Datenbank-Sortierung...")
         try:
-            for ext in extensions:
-                iterator = path_obj.rglob(ext) if recursive else path_obj.glob(ext)
-                for f in iterator: real_files_set.add(f.name)
-            self.update_log(f"Dateien auf Platte: {len(real_files_set)}")
             conn = sqlite3.connect(DB_FILE, timeout=10)
             c = conn.cursor()
-            c.execute("SELECT filename FROM detections")
-            db_rows = c.fetchall()
-            deleted_count = 0
-            for row in db_rows:
-                fname = row[0]
-                if fname not in real_files_set:
-                    c.execute("DELETE FROM detections WHERE filename = ?", (fname,))
-                    deleted_count += 1
+            
+            # Neue Tabelle erstellen
+            c.execute('''CREATE TABLE detections_new 
+                         (id INTEGER PRIMARY KEY, filename TEXT UNIQUE, species TEXT, timestamp TEXT, confidence REAL)''')
+            
+            # Daten sortiert einfügen (id wird neu vergeben)
+            c.execute('''INSERT INTO detections_new (filename, species, timestamp, confidence) 
+                         SELECT filename, species, timestamp, confidence FROM detections ORDER BY timestamp ASC''')
+            
+            # Alte Tabelle löschen und neue umbenennen
+            c.execute('DROP TABLE detections')
+            c.execute('ALTER TABLE detections_new RENAME TO detections')
+            
+            # Indizes neu erstellen
+            c.execute('CREATE INDEX IF NOT EXISTS idx_species ON detections(species);')
+            c.execute('CREATE INDEX IF NOT EXISTS idx_filename ON detections(filename);') 
+            c.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON detections(timestamp);')
+            
             conn.commit()
             c.execute("VACUUM")
+            
+            # Anzahl überprüfen
+            c.execute("SELECT COUNT(*) FROM detections")
+            row_count = c.fetchone()[0]
             conn.close()
-            self.update_log(f"Sync fertig: {deleted_count} verwaiste Einträge entfernt.")
-            messagebox.showinfo("Sync Fertig", f"{deleted_count} Einträge gelöscht.")
+            
+            self.update_log(f"Sortierung fertig: {row_count} Einträge chronologisch angeordnet.")
+            messagebox.showinfo("Sortierung Fertig", f"{row_count} Einträge wurden zeitlich sortiert.")
         except Exception as e:
-            self.update_log(f"Sync Fehler: {e}")
+            self.update_log(f"Sortierung Fehler: {e}")
 
     def update_size_display(self, size_mb):
         self.current_size_mb = size_mb
