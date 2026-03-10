@@ -214,7 +214,7 @@ def predict_species_probability(df, target_hour=None):
         
     fig, ax = plt.subplots(figsize=(6, 4), facecolor='#1e1e1e')
     ax.pie(top5.values, labels=top5.index, autopct='%1.1f%%', startangle=90, textprops={'color':"w"})
-    ax.set_title(f'Wahrscheinlichkeit um {target_hour:02d}:00 Uhr', color='white')
+    ax.set_title(f'Wahrscheinlichkeit bis um {target_hour:02d}:00 Uhr', color='white')
     
     plt.tight_layout()
     img = io.BytesIO()
