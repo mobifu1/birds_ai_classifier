@@ -28,9 +28,7 @@ import matplotlib
 matplotlib.use('Agg') 
 import matplotlib.pyplot as plt
 
-# GUI & System
-import tkinter as tk
-from tkinter import filedialog, messagebox, simpledialog
+# System
 
 # Web & Data
 from flask import Flask, render_template_string, request, url_for
@@ -897,6 +895,7 @@ def dashboard():
                 <div style="margin-top:10px;">
                     <a href="/daily" class="button-link" style="background:#00838f;">📈 Tages-Ansicht (Verlauf)</a>
                     <a href="/weekly" class="button-link">📅 Wochen-Ansicht (Heatmap)</a>
+                    <a href="/settings" class="button-link" style="background:#c2185b;">⚙️ Einstellungen & Steuerung</a>
                 </div>
             </div>
             
@@ -1344,145 +1343,44 @@ def run_flask():
     print(f"Starte Waitress Server auf Port {FLASK_PORT}...")
     serve(app, host='0.0.0.0', port=FLASK_PORT)
 
-# --- HAUPTANWENDUNG (GUI) ---
-class AppGUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title(f"Birds-AI-Classifier (800x448) - {APP_VERSION}")
-        self.root.geometry("780x850") 
+
+# --- NEU: Flask Request/Jsonify imports ---
+from flask import jsonify, redirect
+# 1. Controller definieren
+class BirdAppController:
+    def __init__(self):
         self.greylist = load_greylist()
         self.backlog = load_backlog()
         self.blacklist = load_blacklist()
         self.settings = load_settings()
-        saved_threshold = self.settings.get("threshold", 70)
-
-        self.autostart_timer = None
-        self.in_autostart_mode = False
-
+        
         self.current_size_mb = 0.0
         self.current_remaining = 0
-
-        self.monitor = FolderMonitor(self.update_log, 
-                                     lambda: self.scale_threshold.get(),
-                                     self.update_size_display,
-                                     lambda: self.rename_var.get(),
-                                     lambda: self.delete_var.get(),
-                                     lambda: self.greylist_var.get(), 
-                                     lambda: self.greylist,
-                                     lambda: self.backlog_var.get(),
-                                     lambda: self.backlog,
-                                     lambda: self.blacklist,
-                                     update_duration_callback=self.update_duration_display,
-                                     update_remaining_callback=self.update_remaining_display,
-                                     get_algo_active_callback=lambda: self.algo_var.get()
-                                     )
+        self.duration_ms = 0
+        self.logs = []
         
-        tk.Label(root, text="Vogel-Überwachung", font=("Arial", 16, "bold")).pack(pady=10)
-        
-        frame_folder = tk.Frame(root)
-        frame_folder.pack(pady=5)
-        tk.Label(frame_folder, text="Bilder-Ordner:").pack(side=tk.LEFT, padx=5)
-        self.entry_path = tk.Entry(frame_folder, width=40)
-        self.entry_path.pack(side=tk.LEFT, padx=5)
-        
-        last_folder = self.settings.get("last_folder", "")
-        if last_folder:
-            self.entry_path.insert(0, last_folder)
-            self.root.after(500, lambda: self.update_size_display(get_dir_size_mb(last_folder, True)))
-
-        tk.Button(frame_folder, text="Durchsuchen...", command=self.select_folder).pack(side=tk.LEFT)
-        self.recursive_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(root, text="Unterordner ebenfalls durchsuchen (Rekursiv)", 
-                       variable=self.recursive_var, font=("Segoe UI", 10)).pack(pady=2, anchor=tk.W, padx=20)
-
-        frame_settings = tk.LabelFrame(root, text="KI Einstellungen", padx=10, pady=10)
-        frame_settings.pack(pady=10, padx=20, fill="x")
-        
-        tk.Label(frame_settings, text="Mindest-Wahrscheinlichkeit (%):").pack(anchor=tk.W)
-        self.scale_threshold = tk.Scale(frame_settings, from_=0, to=100, orient=tk.HORIZONTAL, 
-                                        length=400, tickinterval=20, 
-                                        command=lambda v: save_setting("threshold", int(v)))
-        self.scale_threshold.set(saved_threshold) 
-        self.scale_threshold.pack()
-
-        self.rename_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(frame_settings, text="Dateien umbenennen (Random + Class)", 
-                       variable=self.rename_var, fg="blue", font=("Segoe UI", 10)).pack(anchor=tk.W, pady=5)
-
-        frame_backlog = tk.Frame(frame_settings)
-        frame_backlog.pack(anchor=tk.W, pady=5, fill="x")
-        self.backlog_var = tk.BooleanVar(value=True)
-        cb_bl = tk.Checkbutton(frame_backlog, text="Backlog: Verschieben - Datenbankeintrag", 
-                       variable=self.backlog_var, fg="#d2691e", font=("Segoe UI", 10))
-        cb_bl.pack(side=tk.LEFT)
-        btn_bl_select = tk.Button(frame_backlog, text="[ Backlog Konfig ]", 
-                                  command=lambda: self.open_list_config_window("Backlog", self.backlog, save_backlog), 
-                                  font=("Arial", 8))
-        btn_bl_select.pack(side=tk.LEFT, padx=10)
-
-        frame_greylist = tk.Frame(frame_settings)
-        frame_greylist.pack(anchor=tk.W, pady=5, fill="x")
-        self.greylist_var = tk.BooleanVar(value=True)
-        cb_gl = tk.Checkbutton(frame_greylist, text="Greylist: Löschen + Datenbankeintrag", 
-                       variable=self.greylist_var, fg="darkred", font=("Segoe UI", 10))
-        cb_gl.pack(side=tk.LEFT)
-        btn_gl_select = tk.Button(frame_greylist, text="[ Greylist Konfig ]", 
-                                  command=lambda: self.open_list_config_window("Greylist", self.greylist, save_greylist), 
-                                  font=("Arial", 8))
-        btn_gl_select.pack(side=tk.LEFT, padx=10)
-
-        frame_trash = tk.Frame(frame_settings)
-        frame_trash.pack(anchor=tk.W, pady=5, fill="x")
-        self.delete_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(frame_trash, text="Blacklist: Löschen - Datenbankeintrag", 
-                       variable=self.delete_var, fg="red", font=("Segoe UI", 10)).pack(side=tk.LEFT)
-        btn_trash_config = tk.Button(frame_trash, text="[ Blacklist Konfig ]", 
-                                     command=lambda: self.open_list_config_window("Blacklist (Trash)", self.blacklist, save_blacklist), 
-                                     font=("Arial", 8))
-        btn_trash_config.pack(side=tk.LEFT, padx=10)
-
-        frame_ping = tk.Frame(frame_settings)
-        frame_ping.pack(anchor=tk.W, pady=5, fill="x")
-        self.ping_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(frame_ping, text="Camera: ping", variable=self.ping_var, fg="darkgreen", font=("Segoe UI", 10)).pack(side=tk.LEFT)
-
-        frame_algo = tk.Frame(frame_settings)
-        frame_algo.pack(anchor=tk.W, pady=5, fill="x")
-        self.algo_var = tk.BooleanVar(value=self.settings.get("count_algo_active", True))
-        tk.Checkbutton(frame_algo, text="Count Algorithm: (Hectic/Normal/Lazy)", 
-                       variable=self.algo_var, fg="purple", font=("Segoe UI", 10), 
-                       command=lambda: save_setting("count_algo_active", self.algo_var.get())).pack(side=tk.LEFT)
-
-        frame_controls = tk.Frame(root)
-        frame_controls.pack(pady=10)
-        self.btn_start = tk.Button(frame_controls, text="Überwachung Starten", command=self.handle_start_button_click, bg="#dddddd", width=30)
-        self.btn_start.pack(side=tk.LEFT, padx=5)
-        
-        tk.Button(frame_controls, text="Statistik öffnen", command=self.open_web).pack(side=tk.LEFT, padx=5)
-        tk.Button(frame_controls, text="DB Sync", command=self.sort_database_chronologically, bg="#ffdd99").pack(side=tk.LEFT, padx=5)
-        tk.Button(frame_controls, text="DB Reset", command=self.reset_database, bg="#ff9999", state=tk.DISABLED).pack(side=tk.LEFT, padx=5)
-        
-        self.lbl_size = tk.Label(root, text="Ordnergröße: 0.00 MB", font=("Arial", 10, "bold"), fg="blue")
-        self.lbl_size.pack(pady=5)
-        tk.Label(root, text="Status-Log:").pack(anchor=tk.W, padx=20)
-        self.log_text = tk.Text(root, height=10, width=90, state='disabled')
-        self.log_text.pack(pady=5)
-        tk.Button(root, text="Log leeren", command=self.clear_log, font=("Arial", 8)).pack(pady=2)
-        
-        self.lbl_duration = tk.Label(root, text="Bild-Verarbeitung: - ms", font=("Arial", 9), fg="gray")
-        self.lbl_duration.pack(pady=2)
-        
-        self.lbl_ram = tk.Label(root, text="RAM: - MB", font=("Arial", 9), fg="gray")
-        self.lbl_ram.pack(pady=2)
-        
-        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
-        
-        self.update_ram_usage()
-        self.init_autostart_sequence()
+        self.monitor = FolderMonitor(
+            update_log_callback=self.update_log, 
+            get_threshold_callback=lambda: self.settings.get("threshold", 70),
+            update_size_callback=self.update_size_display,
+            get_rename_callback=lambda: self.settings.get("rename_active", True),
+            get_delete_callback=lambda: self.settings.get("delete_active", True),
+            get_greylist_active_callback=lambda: self.settings.get("greylist_active", True), 
+            get_greylist_callback=lambda: self.greylist,
+            get_backlog_active_callback=lambda: self.settings.get("backlog_active", True),
+            get_backlog_callback=lambda: self.backlog,
+            get_blacklist_callback=lambda: self.blacklist,
+            update_duration_callback=self.update_duration_display,
+            update_remaining_callback=self.update_remaining_display,
+            get_algo_active_callback=lambda: self.settings.get("count_algo_active", True)
+        )
         self.schedule_ping()
 
+    def update_settings(self):
+        self.settings = load_settings()
+
     def schedule_ping(self):
-        if self.ping_var.get():
+        if self.settings.get("ping_active", True):
             ip = self.settings.get("camera_ip", "")
             if ip:
                 threading.Thread(target=self._do_ping_task, args=(ip,), daemon=True).start()
@@ -1492,7 +1390,7 @@ class AppGUI:
         else:
             self._write_ping_status(False, False)
             
-        self.root.after(300000, self.schedule_ping) # 5 minutes
+        threading.Timer(300.0, self.schedule_ping).start()
 
     def _do_ping_task(self, ip):
         try:
@@ -1514,247 +1412,406 @@ class AppGUI:
         except:
             pass
 
-    def init_autostart_sequence(self):
-        path = self.entry_path.get()
-        if path and os.path.exists(path):
-            self.in_autostart_mode = True
-            self.countdown_loop(10)
-    
-    def countdown_loop(self, remaining):
-        if not self.in_autostart_mode: return 
-        if remaining <= 0:
-            self.in_autostart_mode = False
-            self.start_monitoring()
-        else:
-            self.btn_start.config(text=f"Autostart in {remaining}s (Klick = Abbruch)", bg="#ccffcc")
-            self.autostart_timer = self.root.after(1000, lambda: self.countdown_loop(remaining - 1))
+    def update_log(self, message):
+        if len(self.logs) > 100:
+            self.logs.pop(0)
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        log_line = f"[{timestamp}] {message}"
+        self.logs.append(log_line)
+        if DEBUG:
+            try:
+                ts_full = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                with open(DEBUG_FILE, "a", encoding="utf-8") as f:
+                    f.write(f"[{ts_full}] {message}\n")
+            except Exception as e:
+                print(f"Fehler beim Schreiben in die Debug-Datei: {e}")
 
-    def handle_start_button_click(self):
-        if self.in_autostart_mode:
-            if self.autostart_timer: self.root.after_cancel(self.autostart_timer)
-            self.in_autostart_mode = False
-            self.btn_start.config(text="Überwachung Starten", bg="#dddddd")
-            self.update_log("Autostart manuell abgebrochen.")
-        else:
-            self.start_monitoring()
+    def update_size_display(self, size_mb):
+        self.current_size_mb = size_mb
 
-    def select_folder(self):
-        path = filedialog.askdirectory()
-        if path:
-            self.entry_path.delete(0, tk.END)
-            self.entry_path.insert(0, path)
-            save_setting("last_folder", path)
-            size = get_dir_size_mb(path, self.recursive_var.get())
-            self.update_size_display(size)
+    def update_remaining_display(self, remaining):
+        self.current_remaining = remaining
 
-    def open_list_config_window(self, title, data_set, save_func):
-        win = tk.Toplevel(self.root)
-        win.title(f"{title} bearbeiten")
-        win.geometry("400x500")
-        tk.Label(win, text=f"Arten für {title} auswählen:", font=("Arial", 10, "bold")).pack(pady=10)
-        
-        known_species = set()
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            c = conn.cursor()
-            c.execute("SELECT DISTINCT species FROM detections")
-            for row in c.fetchall(): known_species.add(row[0])
-            conn.close()
-        except: pass
-        
-        normalized_set = set()
-        for s in data_set: normalized_set.add(s)
-        db_species = set()
-        for s in known_species:
-            if s == "IGNORED_LOW_CONFIDENCE": db_species.add("Unbekannt")
-            else: db_species.add(s)
-        all_species = sorted(list(db_species.union(normalized_set)))
-        
-        frame_list = tk.Frame(win)
-        frame_list.pack(fill="both", expand=True, padx=10, pady=10)
-        scrollbar = tk.Scrollbar(frame_list)
-        scrollbar.pack(side=tk.RIGHT, fill="y")
-        lb = tk.Listbox(frame_list, selectmode=tk.MULTIPLE, yscrollcommand=scrollbar.set)
-        lb.pack(side=tk.LEFT, fill="both", expand=True)
-        scrollbar.config(command=lb.yview)
-        
-        for sp in all_species:
-            lb.insert(tk.END, sp)
-            if sp in normalized_set: lb.selection_set(tk.END) 
-
-        frame_add = tk.Frame(win)
-        frame_add.pack(pady=5)
-        entry_add = tk.Entry(frame_add)
-        entry_add.pack(side=tk.LEFT, padx=5)
-        
-        def add_manual():
-            val = entry_add.get().strip()
-            if val:
-                lb.insert(tk.END, val)
-                lb.selection_set(tk.END)
-                entry_add.delete(0, tk.END)
-
-        tk.Button(frame_add, text="Manuell hinzufügen", command=add_manual).pack(side=tk.LEFT)
-        def save_and_close():
-            selected_indices = lb.curselection()
-            new_set = set()
-            for i in selected_indices: new_set.add(lb.get(i))
-            data_set.clear()
-            data_set.update(new_set)
-            save_func(data_set)
-            messagebox.showinfo("Gespeichert", f"{len(data_set)} Arten gespeichert.")
-            win.destroy()
-        tk.Button(win, text="Speichern & Schließen", command=save_and_close, bg="#ccffcc", height=2).pack(fill="x", padx=10, pady=10)
+    def update_duration_display(self, duration_ms):
+        self.duration_ms = duration_ms
 
     def start_monitoring(self):
-        path = self.entry_path.get()
+        path = self.settings.get("last_folder", "")
         if not path:
-            messagebox.showwarning("Fehler", "Bitte wähle zuerst einen Ordner aus.")
-            return
-        if self.btn_start['text'].startswith("Überwachung Starten") or self.btn_start['text'].startswith("Autostart"):
-            self.monitor.start(path, self.recursive_var.get())
-            self.btn_start.config(text="Stoppen", bg="#ffcccc")
+            self.update_log("Fehler: Bitte zuerst einen Ordner in den Einstellungen festlegen.")
+            return False
+            
+        recursive = self.settings.get("recursive", True)
+        if not getattr(self.monitor, 'running', False):
+            self.monitor.start(path, recursive)
             infos = []
-            if self.rename_var.get(): infos.append("Rename")
-            if self.delete_var.get(): infos.append(f"Blacklist ({len(self.blacklist)} Arten)")
-            if self.backlog_var.get(): infos.append(f"Backlog ({len(self.backlog)} Arten)")
-            if self.greylist_var.get(): infos.append(f"Greylist ({len(self.greylist)} Arten)")
+            if self.settings.get("rename_active", True): infos.append("Rename")
+            if self.settings.get("delete_active", True): infos.append(f"Blacklist ({len(self.blacklist)} Arten)")
+            if self.settings.get("backlog_active", True): infos.append(f"Backlog ({len(self.backlog)} Arten)")
+            if self.settings.get("greylist_active", True): infos.append(f"Greylist ({len(self.greylist)} Arten)")
             info_str = ", ".join(infos) if infos else "Nur Erkennung"
             self.update_log(f"Service gestartet: {info_str}")
-        else:
+            return True
+        return False
+        
+    def stop_monitoring(self):
+        if getattr(self.monitor, 'running', False):
             self.monitor.stop()
-            self.btn_start.config(text="Überwachung Starten", bg="#dddddd")
             self.update_log("Service gestoppt.")
+            return True
+        return False
 
     def sort_database_chronologically(self):
-        if not messagebox.askyesno("Sicherheitsabfrage", "Möchtest du wirklich die Datenbank zeitlich neu sortieren?"):
-            return
         self.update_log("Starte Datenbank-Sortierung...")
         try:
             conn = sqlite3.connect(DB_FILE, timeout=10)
             c = conn.cursor()
-            
-            # Neue Tabelle erstellen
-            c.execute('''CREATE TABLE detections_new 
-                         (id INTEGER PRIMARY KEY, filename TEXT UNIQUE, species TEXT, timestamp TEXT, confidence REAL)''')
-            
-            # Daten sortiert einfügen (id wird neu vergeben)
-            c.execute('''INSERT INTO detections_new (filename, species, timestamp, confidence) 
-                         SELECT filename, species, timestamp, confidence FROM detections ORDER BY timestamp ASC''')
-            
-            # Alte Tabelle löschen und neue umbenennen
+            c.execute('''CREATE TABLE detections_new (id INTEGER PRIMARY KEY, filename TEXT UNIQUE, species TEXT, timestamp TEXT, confidence REAL)''')
+            c.execute('''INSERT INTO detections_new (filename, species, timestamp, confidence) SELECT filename, species, timestamp, confidence FROM detections ORDER BY timestamp ASC''')
             c.execute('DROP TABLE detections')
             c.execute('ALTER TABLE detections_new RENAME TO detections')
-            
-            # Indizes neu erstellen
             c.execute('CREATE INDEX IF NOT EXISTS idx_species ON detections(species);')
             c.execute('CREATE INDEX IF NOT EXISTS idx_filename ON detections(filename);') 
             c.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON detections(timestamp);')
-            
             conn.commit()
             c.execute("VACUUM")
-            
-            # Anzahl überprüfen
             c.execute("SELECT COUNT(*) FROM detections")
             row_count = c.fetchone()[0]
             conn.close()
-            
             self.update_log(f"Sortierung fertig: {row_count} Einträge chronologisch angeordnet.")
-            messagebox.showinfo("Sortierung Fertig", f"{row_count} Einträge wurden zeitlich sortiert.")
+            return f"Sortierung Fertig: {row_count} Einträge chronologisch angeordnet."
         except Exception as e:
-            self.update_log(f"Sortierung Fehler: {e}")
-
-    def update_size_display(self, size_mb):
-        self.current_size_mb = size_mb
-        self._refresh_size_label()
-
-    def update_remaining_display(self, remaining):
-        self.current_remaining = remaining
-        self._refresh_size_label()
-
-    def _refresh_size_label(self):
-        def _update():
-            color = "green"
-            if self.current_size_mb > 100: color = "orange"
-            if self.current_size_mb > 500: color = "red"
-            
-            text = f"Ordnergröße: {self.current_size_mb:.2f} MB"
-            if self.current_remaining > 0:
-                text += f" ({self.current_remaining} Bilder ausstehend)"
-                
-            self.lbl_size.config(text=text, fg=color)
-        self.root.after(0, _update)
-
-    def update_duration_display(self, duration_ms):
-        def _update():
-            if duration_ms > 1500:
-                color = "red"
-            elif duration_ms > 1000:
-                color = "orange"
-            else:
-                color = "gray"
-            self.lbl_duration.config(text=f"Bild-Verarbeitung: {duration_ms} ms", fg=color)
-        self.root.after(0, _update)
-
-    def update_ram_usage(self):
-        try:
-            process = psutil.Process(os.getpid())
-            mem_info = process.memory_info()
-            ram_mb = mem_info.rss / (1024 * 1024)
-            self.lbl_ram.config(text=f"RAM: {ram_mb:.1f} MB")
-        except:
-            pass
-        self.root.after(2000, self.update_ram_usage) # Update every 2 seconds
-
-    def open_web(self):
-        webbrowser.open(f"http://localhost:{FLASK_PORT}")
+            msg = f"Sortierung Fehler: {e}"
+            self.update_log(msg)
+            return msg
 
     def reset_database(self):
-        if messagebox.askyesno("Sicherheitsabfrage", "Möchtest du wirklich ALLE Daten in der Datenbank löschen?"):
-            try:
-                conn = sqlite3.connect(DB_FILE, timeout=10)
-                c = conn.cursor()
-                c.execute("DELETE FROM detections")
-                conn.commit()
-                c.execute("VACUUM")
-                conn.close()
-                self.update_log("Datenbank geleert.")
-                messagebox.showinfo("Erfolg", "Datenbank wurde geleert.")
-            except Exception as e: messagebox.showerror("Fehler", f"{e}")
-
-    def clear_log(self):
-        self.log_text.config(state='normal')
-        self.log_text.delete(1.0, tk.END)
-        self.log_text.config(state='disabled')
-
-    def update_log(self, message):
-        self.log_text.config(state='normal')
         try:
-            line_count = int(self.log_text.index('end-1c').split('.')[0])
-            if line_count > 100: self.log_text.delete(1.0, tk.END)
-        except: pass 
-        self.log_text.insert(tk.END, message + "\n")
-        self.log_text.see(tk.END)
-        self.log_text.config(state='disabled')
-        
-        # Debug Logging in Datei
-        if DEBUG:
-            try:
-                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                with open(DEBUG_FILE, "a", encoding="utf-8") as f:
-                    f.write(f"[{timestamp}] {message}\n")
-            except Exception as e:
-                print(f"Fehler beim Schreiben in die Debug-Datei: {e}")
-        
-    def on_close(self):
-        self.monitor.stop()
-        self.root.destroy()
-        os._exit(0)
+            conn = sqlite3.connect(DB_FILE, timeout=10)
+            c = conn.cursor()
+            c.execute("DELETE FROM detections")
+            conn.commit()
+            c.execute("VACUUM")
+            conn.close()
+            self.update_log("Datenbank geleert.")
+            return "Datenbank wurde geleert."
+        except Exception as e: 
+            return f"Fehler: {e}"
 
+app_controller = BirdAppController()
+
+# --- WEB ENDPOINTS (SETTINGS & CONTROL) ---
+
+SETTINGS_CSS = """
+<style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 0; }
+    .container { max-width: 900px; margin: 20px auto; background: #1e1e1e; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+    h1, h2 { color: #4fc3f7; }
+    h1 { margin-top: 0; padding-bottom: 10px; border-bottom: 2px solid #333;}
+    .section { background: #263238; border-radius: 8px; padding: 20px; margin-bottom: 20px; border: 1px solid #37474f;}
+    .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
+    label { font-weight: bold; }
+    input[type=text], input[type=number] { padding: 10px; border-radius: 6px; border: 1px solid #444; background: #121212; color: #fff; width: 60%; }
+    input[type=checkbox] { transform: scale(1.5); margin-right: 10px; cursor: pointer; }
+    button, .btn { padding: 10px 20px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; color: white; display: inline-block; text-decoration: none; text-align: center; }
+    .btn-green { background: #2e7d32; } .btn-green:hover { background: #388e3c; }
+    .btn-red { background: #c62828; } .btn-red:hover { background: #e53935; }
+    .btn-blue { background: #0277bd; } .btn-blue:hover { background: #0288d1; }
+    .btn-orange { background: #e65100; } .btn-orange:hover { background: #f57c00; }
+    .btn-gray { background: #546e7a; } .btn-gray:hover { background: #607d8b; }
+    .log-window { background: #000; border: 1px solid #444; color: #0f0; width: 100%; height: 200px; overflow-y: scroll; padding: 10px; font-family: monospace; border-radius: 6px; box-sizing: border-box; }
+    .status-panel { display: flex; justify-content: space-between; background: #1e1e1e; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; }
+    .status-item { text-align: center; }
+    .status-val { font-size: 1.5em; font-weight: bold; color: #81d4fa; }
+    textarea.list-editor { width: 100%; height: 150px; background: #121212; color: #fff; border: 1px solid #444; padding: 10px; border-radius: 6px; margin-top: 10px; resize: vertical; }
+    .btn-nav { margin-bottom: 20px; }
+    .help-text { font-size: 0.8em; color: #999; margin-top: 5px; display: block; }
+</style>
+"""
+
+@app.route('/settings')
+def settings_page():
+    s = app_controller.settings
+    # Build list of unique species in DB for helpers
+    known_species = set()
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT DISTINCT species FROM detections")
+        for row in c.fetchall():
+            if row[0] == "IGNORED_LOW_CONFIDENCE":
+                known_species.add("Unbekannt")
+            else:
+                known_species.add(row[0])
+        conn.close()
+    except: pass
+    db_species_str = ", ".join(sorted(list(known_species)))
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Einstellungen & Steuerung</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+        {{{{ css_style|safe }}}}
+    </head>
+    <body>
+        <div class="container">
+            <a href="/" class="btn btn-gray btn-nav">&laquo; Zurück zum Dashboard</a>
+            <h1>⚙️ Einstellungen & Steuerung</h1>
+
+            <div class="status-panel">
+                <div class="status-item"><div>Ordnergröße</div><div class="status-val" id="size-val">0.0 MB</div></div>
+                <div class="status-item"><div>Ausstehend</div><div class="status-val" id="rem-val">0</div></div>
+                <div class="status-item"><div>Bild-Dauer</div><div class="status-val" id="dur-val">0 ms</div></div>
+                <div class="status-item"><div>RAM</div><div class="status-val" id="ram-val">0 MB</div></div>
+            </div>
+
+            <div class="section">
+                <h2>Steuerung & Datenbank</h2>
+                <div style="display:flex; gap:10px; margin-bottom: 20px;">
+                    <button class="btn btn-green" onclick="startMonitor()" id="btn-start">Überwachung Starten</button>
+                    <button class="btn btn-red" onclick="stopMonitor()" id="btn-stop">Stoppen</button>
+                    <button class="btn btn-orange" onclick="dbSync()">Datenbank zeitlich sortieren</button>
+                    <button class="btn btn-red" disabled style="opacity: 0.5; cursor: not-allowed;" onclick="dbReset()">DB Reset (Alles löschen)</button>
+                </div>
+                <h3>Status-Log</h3>
+                <div class="log-window" id="log-window"></div>
+            </div>
+
+            <form id="settingsForm">
+                <div class="section">
+                    <h2>KI Einstellungen</h2>
+                    <div class="row">
+                        <label>Bilder-Ordner (Absoluter Pfad):</label>
+                        <input type="text" id="last_folder" value="{s.get('last_folder', '')}" required>
+                    </div>
+                    <div class="row" style="justify-content: flex-start;">
+                        <input type="checkbox" id="recursive" {'checked' if s.get('recursive', True) else ''}>
+                        <label>Unterordner durchsuchen (Rekursiv)</label>
+                    </div>
+                    
+                    <div class="row">
+                        <label>Kamera IP (für Ping):</label>
+                        <input type="text" id="camera_ip" value="{s.get('camera_ip', '')}">
+                    </div>
+                    
+                    <div class="row">
+                        <label>Mindest-Wahrscheinlichkeit (Threshold %):</label>
+                        <input type="number" id="threshold" value="{s.get('threshold', 70)}" min="0" max="100">
+                    </div>
+                    
+                    <div style="margin-top: 20px;">
+                        <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="rename_active" {'checked' if s.get('rename_active', True) else ''}> <label>Dateien umbenennen (Random + Class)</label></div>
+                        <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="ping_active" {'checked' if s.get('ping_active', True) else ''}> <label style="color:darkgreen;">Camera: ping aktiv</label></div>
+                        <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="count_algo_active" {'checked' if s.get('count_algo_active', True) else ''}> <label style="color:purple;">Count Algorithm (Hectic/Normal/Lazy)</label></div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>Listen Konfiguration (Filter)</h2>
+                    
+                    <div class="row" style="justify-content: flex-start;">
+                        <input type="checkbox" id="backlog_active" {'checked' if s.get('backlog_active', True) else ''}>
+                        <label style="color:#d2691e;">Backlog: Verschieben - KEIN Datenbankeintrag (für unbedeutende Arten / Algo-Ignores)</label>
+                    </div>
+                    <label>Backlog Arten (kommagetrennt):</label>
+                    <textarea class="list-editor" id="backlog">{','.join(app_controller.backlog)}</textarea>
+
+                    <hr style="border-color: #444; margin:20px 0;">
+                    
+                    <div class="row" style="justify-content: flex-start;">
+                        <input type="checkbox" id="greylist_active" {'checked' if s.get('greylist_active', True) else ''}>
+                        <label style="color:indianred;">Greylist: Löschen + Datenbankeintrag</label>
+                    </div>
+                    <label>Greylist Arten (kommagetrennt):</label>
+                    <textarea class="list-editor" id="greylist">{','.join(app_controller.greylist)}</textarea>
+
+                    <hr style="border-color: #444; margin:20px 0;">
+
+                    <div class="row" style="justify-content: flex-start;">
+                        <input type="checkbox" id="delete_active" {'checked' if s.get('delete_active', True) else ''}>
+                        <label style="color:red;">Blacklist (Trash): Löschen - KEIN Datenbankeintrag (z.B. Hintergrund, Unbekannt)</label>
+                    </div>
+                    <label>Blacklist Arten (kommagetrennt):</label>
+                    <textarea class="list-editor" id="blacklist">{','.join(app_controller.blacklist)}</textarea>
+
+                    <span class="help-text">Verfügbare Arten in DB: {db_species_str}</span>
+                </div>
+                
+                <button type="button" class="btn btn-blue" style="width:100%; padding: 15px; font-size:1.2em;" onclick="saveSettings()">Einstellungen Speichern</button>
+            </form>
+        </div>
+
+        <script>
+            // Initiale UI
+            updateButtons();
+
+            function startMonitor() {{
+                fetch('/api/control/start', {{ method: 'POST' }})
+                .then(r => r.json())
+                .then(d => {{ if(d.error) alert(d.error); updateButtons(); }});
+            }}
+            
+            function stopMonitor() {{
+                fetch('/api/control/stop', {{ method: 'POST' }})
+                .then(r => r.json())
+                .then(d => updateButtons());
+            }}
+            
+            function dbSync() {{
+                if(confirm("Möchtest du wirklich die Datenbank zeitlich neu sortieren?")) {{
+                    fetch('/api/control/dbsync', {{ method: 'POST' }}).then(r=>r.json()).then(d=>alert(d.msg));
+                }}
+            }}
+            
+            function dbReset() {{
+                if(confirm("WARNUNG! Möchtest du wirklich ALLE Daten der Datenbank und Statistiken verwerfen?")) {{
+                    if(confirm("Sicher? Letzte Warnung!")) {{
+                        fetch('/api/control/dbreset', {{ method: 'POST' }}).then(r=>r.json()).then(d=>alert(d.msg));
+                    }}
+                }}
+            }}
+
+            function saveSettings() {{
+                const data = {{
+                    settings: {{
+                        last_folder: document.getElementById('last_folder').value,
+                        recursive: document.getElementById('recursive').checked,
+                        camera_ip: document.getElementById('camera_ip').value,
+                        threshold: parseInt(document.getElementById('threshold').value),
+                        rename_active: document.getElementById('rename_active').checked,
+                        ping_active: document.getElementById('ping_active').checked,
+                        count_algo_active: document.getElementById('count_algo_active').checked,
+                        backlog_active: document.getElementById('backlog_active').checked,
+                        greylist_active: document.getElementById('greylist_active').checked,
+                        delete_active: document.getElementById('delete_active').checked
+                    }},
+                    lists: {{
+                        backlog: document.getElementById('backlog').value.split(',').map(s => s.trim()).filter(s => s),
+                        greylist: document.getElementById('greylist').value.split(',').map(s => s.trim()).filter(s => s),
+                        blacklist: document.getElementById('blacklist').value.split(',').map(s => s.trim()).filter(s => s)
+                    }}
+                }};
+                
+                fetch('/api/settings/save', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify(data)
+                }})
+                .then(res => res.json())
+                .then(data => alert(data.msg))
+                .catch(err => alert('Fehler beim Speichern!'));
+            }}
+
+            function updateButtons() {{
+                fetch('/api/status')
+                .then(res => res.json())
+                .then(data => {{
+                    if (data.running) {{
+                        document.getElementById('btn-start').style.display = 'none';
+                        document.getElementById('btn-stop').style.display = 'inline-block';
+                    }} else {{
+                        document.getElementById('btn-start').style.display = 'inline-block';
+                        document.getElementById('btn-stop').style.display = 'none';
+                    }}
+                    
+                    document.getElementById('size-val').innerText = data.size_mb.toFixed(2) + " MB";
+                    document.getElementById('rem-val').innerText = data.remaining;
+                    document.getElementById('dur-val').innerText = data.duration_ms + " ms";
+                    document.getElementById('ram-val').innerText = data.ram_mb.toFixed(1) + " MB";
+                    
+                    const logWin = document.getElementById('log-window');
+                    logWin.innerHTML = data.logs.join('<br>');
+                    logWin.scrollTop = logWin.scrollHeight;
+                }});
+            }}
+
+            // Poll Status Every 1.5 seconds
+            setInterval(updateButtons, 1500);
+        </script>
+    </body>
+    </html>
+    """
+    return render_template_string(html, css_style=SETTINGS_CSS)
+
+@app.route('/api/control/start', methods=['POST'])
+def api_start():
+    ok = app_controller.start_monitoring()
+    if ok: return jsonify({"msg": "Started"})
+    return jsonify({"error": "Fehler beim Start. Überprüfe den Bilder-Ordner."})
+
+@app.route('/api/control/stop', methods=['POST'])
+def api_stop():
+    app_controller.stop_monitoring()
+    return jsonify({"msg": "Stopped"})
+
+@app.route('/api/control/dbsync', methods=['POST'])
+def api_dbsync():
+    msg = app_controller.sort_database_chronologically()
+    return jsonify({"msg": msg})
+
+@app.route('/api/control/dbreset', methods=['POST'])
+def api_dbreset():
+    msg = app_controller.reset_database()
+    return jsonify({"msg": msg})
+
+@app.route('/api/settings/save', methods=['POST'])
+def api_settings_save():
+    data = request.json
+    new_settings = data.get('settings', {})
+    
+    # Save settings directly to file
+    current_settings = load_settings()
+    for k, v in new_settings.items():
+        current_settings[k] = v
+        save_setting(k, v)
+        
+    app_controller.update_settings()
+    
+    lists = data.get('lists', {})
+    if 'backlog' in lists:
+        app_controller.backlog = set(lists['backlog'])
+        save_backlog(app_controller.backlog)
+    if 'greylist' in lists:
+        app_controller.greylist = set(lists['greylist'])
+        save_greylist(app_controller.greylist)
+    if 'blacklist' in lists:
+        app_controller.blacklist = set(lists['blacklist'])
+        save_blacklist(app_controller.blacklist)
+
+    return jsonify({"msg": "Einstellungen und Listen erfolgreich gespeichert!"})
+
+@app.route('/api/status', methods=['GET'])
+def api_status():
+    import psutil
+    try:
+        process = psutil.Process(os.getpid())
+        ram_mb = process.memory_info().rss / (1024 * 1024)
+    except:
+        ram_mb = 0.0
+        
+    return jsonify({
+        "running": getattr(app_controller.monitor, 'running', False),
+        "size_mb": app_controller.current_size_mb,
+        "remaining": app_controller.current_remaining,
+        "duration_ms": app_controller.duration_ms,
+        "ram_mb": ram_mb,
+        "logs": app_controller.logs
+    })
+
+# Main entry point update
 if __name__ == "__main__":
     init_db()
-    flask_process = multiprocessing.Process(target=run_flask, daemon=True)
-    flask_process.start()
-    root = tk.Tk()
-    app_gui = AppGUI(root)
-    root.mainloop()
+    # Check ob wir einen Autostart brauchen
+    s = load_settings()
+    last_folder = s.get("last_folder", "")
+    if last_folder and os.path.exists(last_folder):
+        print(f"Versuche Autostart für Überwachung auf: {last_folder}")
+        def delayed_start():
+            import time
+            time.sleep(5)
+            app_controller.start_monitoring()
+        threading.Thread(target=delayed_start, daemon=True).start()
+    
+    run_flask()
