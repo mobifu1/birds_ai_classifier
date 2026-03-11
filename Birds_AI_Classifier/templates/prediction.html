@@ -84,6 +84,19 @@
                     {{ disturbance_text|safe }}
                 </div>
             </div>
+
+            <!-- 5. Arten-Diversifikation -->
+            <div class="metric-card">
+                <h3>5. Arten-Diversifikation</h3>
+                <p>Messung und Trend der Vielfalt an Vogelarten am Futterhaus.</p>
+                <div
+                    style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #69f0ae; margin-bottom: 10px;">
+                    {{ diversification_text|safe }}
+                </div>
+                <div style="font-size: 1.1em; color: #e0e0e0;">
+                    Trend (im Zeitverlauf): <strong>{{ diversification_trend|safe }}</strong>
+                </div>
+            </div>
         </div>
 
         <div class="footer">

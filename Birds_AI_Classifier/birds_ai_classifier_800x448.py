@@ -824,6 +824,34 @@ def analyze_disturbance(df):
     avg_gap = sum([e['gap_mins'] for e in events]) / len(events)
     return f"Im Schnitt wird das Futterhaus nach einem Störereignis für {avg_gap:.1f} Minuten gemieden."
 
+def analyze_diversification(df):
+    if df.empty:
+        return "Bisher keine Sichtungen in diesem Zeitraum erfasst.", "Keine Daten ➖"
+    
+    daily_species = df.groupby('date')['species'].nunique()
+    total_unique = df['species'].nunique()
+    
+    if len(daily_species) < 2:
+        return f"Aktuell <strong>{total_unique}</strong> verschiedene Arten gesichtet.", "Zu wenig Daten für einen Trend ➖"
+    
+    n_days = len(daily_species)
+    half = n_days // 2
+    
+    first_half_avg = daily_species.iloc[:half].mean()
+    second_half_avg = daily_species.iloc[half:].mean()
+    
+    if pd.isna(first_half_avg) or pd.isna(second_half_avg) or first_half_avg == 0:
+        trend_html = "<span style='color: #ffd54f;'>Zu wenig Daten ➖</span>"
+    elif second_half_avg > first_half_avg * 1.05:
+        trend_html = "<span style='color: #69f0ae;'>Zunehmend 📈</span>"
+    elif second_half_avg < first_half_avg * 0.95:
+        trend_html = "<span style='color: #ff5252;'>Abnehmend 📉</span>"
+    else:
+        trend_html = "<span style='color: #ffd54f;'>Gleichbleibend ➖</span>"
+        
+    text = f"Insgesamt <strong>{total_unique}</strong> verschiedene Arten im ausgewählten Zeitraum ({len(daily_species)} Tage ausgewertet)."
+    return text, trend_html
+
 def fetch_weather_data(config):
     if not config or "API-Key" not in config or "Station-ID" not in config:
         return None, "Wetter-Konfiguration unvollständig."
@@ -884,6 +912,7 @@ def prediction_dashboard():
             weather_text = "<strong>Muster (Demo):</strong> An regnerischen oder sehr kalten Tagen weicht das Futterverhalten stark von sonnigen Tagen ab. Vögel fressen dann oft mehr und in konzentrierteren Abständen."
     
     disturbance_text = analyze_disturbance(df)
+    diversification_text, diversification_trend = analyze_diversification(df)
     
     return render_template('prediction.html', 
                                   days=days, 
@@ -896,6 +925,8 @@ def prediction_dashboard():
                                   weather_data_html=weather_data_html,
                                   weather_text=weather_text,
                                   disturbance_text=disturbance_text,
+                                  diversification_text=diversification_text,
+                                  diversification_trend=diversification_trend,
                                   version=APP_VERSION)
 
 @app.route('/')
