@@ -1,6 +1,8 @@
 import sqlite3
 import tkinter as tk
 from tkinter import filedialog, messagebox
+import os
+import random
 
 def merge_db_files():
     main_db = filedialog.askopenfilename(
@@ -17,58 +19,81 @@ def merge_db_files():
     if not sub_db:
         return
         
-    try:
-        # Verbindung zur Hauptdatenbank herstellen
-        conn = sqlite3.connect(main_db)
-        cursor = conn.cursor()
-        # Zählen wie viele Einträge vorher da waren
-        cursor.execute("SELECT COUNT(*) FROM detections")
-        count_before = cursor.fetchone()[0]
+    output_db = filedialog.asksaveasfilename(
+        title="Speicherort für die NEUE zusammengeführte Datenbank",
+        defaultextension=".db",
+        initialfile="birds_stats_merged.db",
+        filetypes=[("SQLite Database", "*.db"), ("All files", "*.*")]
+    )
+    if not output_db:
+        return
         
-        # Sub-Datenbank einhängen (ATTACH DATABASE)
+    try:
+        # Verbindung zur NEUEN Hauptdatenbank herstellen
+        conn = sqlite3.connect(output_db)
+        cursor = conn.cursor()
+        
+        # Beide Quell-Datenbanken an die neue DB anhängen
+        cursor.execute(f"ATTACH DATABASE '{main_db}' AS main_db")
         cursor.execute(f"ATTACH DATABASE '{sub_db}' AS sub_db")
         
-        # 1. Temporäre Tabelle erstellen
+        # 1. Temporäre Tabelle in der NEUEN DB erstellen
         cursor.execute("CREATE TEMP TABLE temp_merge (filename TEXT UNIQUE, species TEXT, timestamp TEXT, confidence REAL)")
         
+        
         # 2. Main-Datenbank Daten reinkopieren
-        cursor.execute("INSERT OR IGNORE INTO temp_merge SELECT filename, species, timestamp, confidence FROM detections")
+        cursor.execute("INSERT OR IGNORE INTO temp_merge SELECT filename, species, timestamp, confidence FROM main_db.detections")
         
-        # 3. Sub-Datenbank Daten reinkopieren (ignoriert Duplikate anhand vom Dateinamen)
-        cursor.execute("INSERT OR IGNORE INTO temp_merge SELECT filename, species, timestamp, confidence FROM sub_db.detections")
+        # 3. Sub-Datenbank Daten reinkopieren (Kollisionen umbenennen)
+        cursor.execute("SELECT filename, species, timestamp, confidence FROM sub_db.detections")
+        for row in cursor.fetchall():
+            filename, species, timestamp, confidence = row
+            try:
+                cursor.execute("INSERT INTO temp_merge (filename, species, timestamp, confidence) VALUES (?, ?, ?, ?)",
+                               (filename, species, timestamp, confidence))
+            except sqlite3.IntegrityError:
+                name_part, ext = os.path.splitext(filename)
+                inserted = False
+                while not inserted:
+                    new_filename = f"{name_part}_merge_{random.randint(100000, 999999)}{ext}"
+                    try:
+                        cursor.execute("INSERT INTO temp_merge (filename, species, timestamp, confidence) VALUES (?, ?, ?, ?)",
+                                       (new_filename, species, timestamp, confidence))
+                        inserted = True
+                    except sqlite3.IntegrityError:
+                        pass
         
-        # 4. Alte Tabelle komplett ersetzen
-        cursor.execute("DROP TABLE detections")
+        # 4. In der neuen Tabelle speichern (detections)
         cursor.execute('''
-            CREATE TABLE detections 
+            CREATE TABLE IF NOT EXISTS detections 
             (id INTEGER PRIMARY KEY, filename TEXT UNIQUE, species TEXT, timestamp TEXT, confidence REAL)
         ''')
         
-        # 5. Daten aus temporärer Tabelle wieder einfügen: diesmal SORTIERT nach Zeitstempel
+        # 5. Daten aus temporärer Tabelle einfügen, sortiert nach Zeitstempel
         cursor.execute("""
             INSERT INTO detections (filename, species, timestamp, confidence)
             SELECT filename, species, timestamp, confidence FROM temp_merge ORDER BY timestamp ASC
         """)
         
-        # 6. Indizes wieder anlegen (wie in deinem Original-Script)
+        # 6. Indizes anlegen
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_species ON detections(species);')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_filename ON detections(filename);') 
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON detections(timestamp);')
         
-        # Berechnen wie viele Einträge neu hinzugekommen sind
+        # Berechnen wie viele Einträge in der neuen DB sind
         cursor.execute("SELECT COUNT(*) FROM detections")
         count_after = cursor.fetchone()[0]
-        changes = count_after - count_before
         
         conn.commit()
         
-        # Verbindung zur Sub-DB wieder trennen
+        # Verbindungen wieder trennen
+        cursor.execute("DETACH DATABASE main_db")
         cursor.execute("DETACH DATABASE sub_db")
         conn.close()
         
         messagebox.showinfo(
             "Ergebnis", 
-            f"Merge abgeschlossen!\n\nEs wurden {changes} neue Bilder/Erkennungen in das Main-File hinzugefügt.\n(Duplikate anhand des Dateinamens wurden ignoriert)."
+            f"Merge erfolgreich in neue Datei abgeschlossen!\n\nDie neue Datenbank enthält {count_after} Bilder/Erkennungen.\n(Kollidierende Dateinamen wurden automatisch umbenannt)."
         )
         
     except sqlite3.Error as e:
