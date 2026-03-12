@@ -9,6 +9,7 @@ neue_bilder_downloads/
 new_birds/
 test/
 backlog/
+error_images
 
 # Ignoriere Modell-Files/Database-Files
 *.keras

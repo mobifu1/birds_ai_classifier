@@ -451,7 +451,20 @@ class FolderMonitor:
                 duration_ms = int((time.time() - start_time) * 1000)
                 if self.update_duration_callback:
                     self.update_duration_callback(duration_ms)
-                if species == "Fehler": continue
+                
+                if species == "Fehler":
+                    self.log_callback(f"[{file_path.name}] ❌ Bild konnte nicht gelesen werden (evtl. defekt oder 0 Bytes).")
+                    try:
+                        app_dir = Path(os.path.abspath(os.path.dirname(__file__)))
+                        error_dir = app_dir / "error_images"
+                        error_dir.mkdir(exist_ok=True)
+                        error_path = error_dir / file_path.name
+                        shutil.move(str(file_path), str(error_path))
+                        self.log_callback(f"[{file_path.name}] ➡️ In Ordner 'error_images' verschoben, um Endlosschleife zu verhindern.")
+                    except Exception as e:
+                        pass # Falls es noch geschrieben wird und gelockt ist, bleibt es für den nächsten Versuch
+                    continue
+
                 
                 gc.collect() 
                 
