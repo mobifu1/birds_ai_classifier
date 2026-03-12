@@ -926,6 +926,34 @@ def analyze_diversification(df):
     text = f"Insgesamt <strong>{total_unique}</strong> verschiedene Arten im ausgewählten Zeitraum ({len(daily_species)} Tage ausgewertet)."
     return text, trend_html
 
+def analyze_absolute_visitors(df):
+    if df.empty:
+        return "Bisher keine Sichtungen in diesem Zeitraum erfasst.", "Keine Daten ➖"
+    
+    daily_visitors = df.groupby('date').size()
+    total_visitors = int(daily_visitors.sum())
+    
+    if len(daily_visitors) < 2:
+        return f"Aktuell <strong>{total_visitors}</strong> absolute Besucher erfasst.", "Zu wenig Daten für einen Trend ➖"
+    
+    n_days = len(daily_visitors)
+    half = n_days // 2
+    
+    first_half_avg = daily_visitors.iloc[:half].mean()
+    second_half_avg = daily_visitors.iloc[half:].mean()
+    
+    if pd.isna(first_half_avg) or pd.isna(second_half_avg) or first_half_avg == 0:
+        trend_html = "<span style='color: #ffd54f;'>Zu wenig Daten ➖</span>"
+    elif second_half_avg > first_half_avg * 1.05:
+        trend_html = "<span style='color: #b388ff;'>Zunehmend 📈</span>"
+    elif second_half_avg < first_half_avg * 0.95:
+        trend_html = "<span style='color: #ff5252;'>Abnehmend 📉</span>"
+    else:
+        trend_html = "<span style='color: #ffd54f;'>Gleichbleibend ➖</span>"
+        
+    text = f"Insgesamt <strong>{total_visitors}</strong> absolute Besucher im ausgewählten Zeitraum ({len(daily_visitors)} Tage ausgewertet)."
+    return text, trend_html
+
 def fetch_weather_data(config):
     if not config or "API-Key" not in config or "Station-ID" not in config:
         return None, "Wetter-Konfiguration unvollständig."
@@ -956,9 +984,9 @@ def fetch_weather_data(config):
 @app.route('/prediction')
 def prediction_dashboard():
     try:
-        days = int(request.args.get('days', 7))
+        days = int(request.args.get('days', 14))
     except ValueError:
-        days = 7
+        days = 14
     if days < 1: days = 1
     if days > 30: days = 30
     
@@ -987,6 +1015,7 @@ def prediction_dashboard():
     
     disturbance_text = analyze_disturbance(df)
     diversification_text, diversification_trend = analyze_diversification(df)
+    absolute_visitors_text, absolute_visitors_trend = analyze_absolute_visitors(df)
     
     return render_template('prediction.html', 
                                   days=days, 
@@ -1001,6 +1030,8 @@ def prediction_dashboard():
                                   disturbance_text=disturbance_text,
                                   diversification_text=diversification_text,
                                   diversification_trend=diversification_trend,
+                                  absolute_visitors_text=absolute_visitors_text,
+                                  absolute_visitors_trend=absolute_visitors_trend,
                                   version=APP_VERSION)
 
 @app.route('/')
@@ -1106,7 +1137,6 @@ def dashboard():
         ax.bar(df['species'], df['count'], color=colors)
         ax.tick_params(axis='x', colors='white', rotation=45)
         ax.tick_params(axis='y', colors='white')
-        ax.set_title('Verteilung der Arten', color='white')
         ax.set_facecolor('#1e1e1e')
         
         plt.tight_layout()
@@ -1653,7 +1683,7 @@ def settings_page():
 
                     <div class="row" style="justify-content: flex-start;">
                         <input type="checkbox" id="delete_active" {'checked' if s.get('delete_active', True) else ''}>
-                        <label style="color:red;">Blacklist (Trash): Löschen - KEIN Datenbankeintrag (z.B. Hintergrund, Unbekannt)</label>
+                        <label style="color:red;">Blacklist: Löschen - KEIN Datenbankeintrag (z.B. Hintergrund, Unbekannt)</label>
                     </div>
                     <label>Blacklist Arten (kommagetrennt):</label>
                     <textarea class="list-editor" id="blacklist">{','.join(app_controller.blacklist)}</textarea>

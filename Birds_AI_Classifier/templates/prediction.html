@@ -97,6 +97,19 @@
                     Trend (im Zeitverlauf): <strong>{{ diversification_trend|safe }}</strong>
                 </div>
             </div>
+
+            <!-- 6. Absolute Besucher -->
+            <div class="metric-card">
+                <h3>6. Absolute Besucher</h3>
+                <p>Messung und Trend der absoluten Futterhaus-Besuche (alle Vögel).</p>
+                <div
+                    style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #b388ff; margin-bottom: 10px;">
+                    {{ absolute_visitors_text|safe }}
+                </div>
+                <div style="font-size: 1.1em; color: #e0e0e0;">
+                    Trend (im Zeitverlauf): <strong>{{ absolute_visitors_trend|safe }}</strong>
+                </div>
+            </div>
         </div>
 
         <div class="footer">
