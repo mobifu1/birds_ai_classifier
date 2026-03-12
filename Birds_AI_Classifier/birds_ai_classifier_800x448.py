@@ -442,12 +442,31 @@ class FolderMonitor:
                 if self.update_remaining_callback:
                     self.update_remaining_callback(len(files_to_process) - index)
                 if not self.running: break
-                if not os.path.exists(file_path): continue 
+                if not os.path.exists(file_path): 
+                    self.log_callback(f"[{file_path.name}] ⚠️ Datei nicht mehr vorhanden. Überspringe...")
+                    continue 
+
+                # Prüfen ob die Datei noch beschrieben wird (z.B. von FTP)
+                is_locked = True
+                for _ in range(4): # max 2 Sekunden warten
+                    try:
+                        # Exklusiver Schreibzugriff schlägt auf Windows fehl, wenn die Datei gelockt ist
+                        with open(file_path, 'a'):
+                            is_locked = False
+                            break
+                    except OSError:
+                        time.sleep(0.5)
+
+                if is_locked:
+                    self.log_callback(f"[{file_path.name}] ⏳ Datei wird noch hochgeladen (gesperrt). Warte auf nächsten Durchlauf.")
+                    continue
 
                 start_time = time.time()
                 try:
                     species, conf = self.ai.analyze_image(str(file_path))
-                except Exception: continue
+                except Exception as e:
+                    self.log_callback(f"[{file_path.name}] ❌ Fehler in analyze_image: {e}")
+                    continue
                 duration_ms = int((time.time() - start_time) * 1000)
                 if self.update_duration_callback:
                     self.update_duration_callback(duration_ms)
@@ -462,6 +481,7 @@ class FolderMonitor:
                         shutil.move(str(file_path), str(error_path))
                         self.log_callback(f"[{file_path.name}] ➡️ In Ordner 'error_images' verschoben, um Endlosschleife zu verhindern.")
                     except Exception as e:
+                        self.log_callback(f"[{file_path.name}] ⚠️ Bild ist gelockt und kann nicht verschoben werden: {e}")
                         pass # Falls es noch geschrieben wird und gelockt ist, bleibt es für den nächsten Versuch
                     continue
 
@@ -569,6 +589,8 @@ class FolderMonitor:
                         except Exception as e:
                             self.log_callback(f"[{final_filename}] ❌ Fehler beim Verschieben (Backlog): {e}")
                         continue
+                    elif is_low_confidence:
+                        self.log_callback(f"[{final_filename}] ℹ️ Bild ist unter Schwellwert ({conf_percent}%), aber '{match_species}' ist nicht im Backlog aktiviert.")
                 
                 if greylist_active and species in current_greylist:
                     try:
@@ -608,7 +630,8 @@ class FolderMonitor:
                                   (final_filename, "IGNORED_LOW_CONFIDENCE", timestamp, conf))
                         conn.commit()
                         self.log_callback(f"[{final_filename}] ❌ {species} ({conf_percent}%) -> Ignoriert (DB)")
-                except sqlite3.IntegrityError: pass 
+                except sqlite3.IntegrityError: 
+                    self.log_callback(f"[{final_filename}] ⚠️ Bild bereits in der Datenbank (Integrity Error).") 
             
             if self.update_remaining_callback:
                 self.update_remaining_callback(0)
