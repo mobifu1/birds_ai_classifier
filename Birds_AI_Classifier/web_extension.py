@@ -243,6 +243,59 @@ def api_status():
         "logs": app_controller.logs
     })
 
+@app.route('/manual_entry')
+def manual_entry_page():
+    known_species = set()
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT DISTINCT species FROM detections")
+        for row in c.fetchall():
+            if row[0] == "IGNORED_LOW_CONFIDENCE":
+                known_species.add("Unbekannt")
+            else:
+                known_species.add(row[0])
+        conn.close()
+    except: pass
+    
+    try:
+        if os.path.exists("species_categories.json"):
+            with open("species_categories.json", "r") as f:
+                import json
+                categories = json.load(f)
+                for sp in categories.keys():
+                    known_species.add(sp)
+    except: pass
+    
+    species_list = sorted(list(known_species))
+    return render_template('manual_entry.html', species_list=species_list)
+
+@app.route('/api/manual_entry/save', methods=['POST'])
+def api_manual_entry_save():
+    import uuid
+    data = request.json
+    species = data.get('species')
+    date_str = data.get('date')
+    time_str = data.get('time')
+    
+    if not species or not date_str or not time_str:
+        return jsonify({"success": False, "error": "Fehlende Daten"})
+        
+    timestamp = f"{date_str} {time_str}:00"
+    dummy_filename = f"manual_{uuid.uuid4().hex[:8]}.jpg"
+    
+    try:
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        c = conn.cursor()
+        c.execute("INSERT INTO detections (filename, species, timestamp, confidence) VALUES (?, ?, ?, ?)", 
+                  (dummy_filename, species, timestamp, 1.0))
+        conn.commit()
+        conn.close()
+        app_controller.update_log(f"Manueller Eintrag: {species} am {timestamp}")
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
 # Main entry point update
 if __name__ == "__main__":
     init_db()
