@@ -491,6 +491,8 @@ class FolderMonitor:
                 try:
                     target_img = os.path.join(STATIC_FOLDER, LAST_IMG_NAME)
                     shutil.copy2(file_path, target_img)
+                    with open(os.path.join(STATIC_FOLDER, 'last_detection_filename.txt'), 'w', encoding='utf-8') as f:
+                        f.write(file_path.name)
                 except: pass
 
                 conf_percent = int(conf * 100)
@@ -544,6 +546,18 @@ class FolderMonitor:
                         rand_id = random.randint(100000, 999999)
                         target_backlog_path = backlog_dir / f"{rand_id}_algo_ignore_{algo_ignore}{file_ext}"
                         shutil.move(str(file_path), str(target_backlog_path))
+                        
+                        # Update tracking file
+                        try:
+                            tracker_path = os.path.join(STATIC_FOLDER, 'last_detection_filename.txt')
+                            if os.path.exists(tracker_path):
+                                with open(tracker_path, 'r', encoding='utf-8') as f:
+                                    tracked = f.read().strip()
+                                if tracked == file_path.name:
+                                    with open(tracker_path, 'w', encoding='utf-8') as f:
+                                        f.write(target_backlog_path.name)
+                        except: pass
+                        
                         self.log_callback(f"[{final_filename}] ⏳ Verschiebe ignoriertes Bild ins Backlog -> {target_backlog_path.name}")
                     except Exception as e:
                         self.log_callback(f"[{final_filename}] ❌ Fehler beim Verschieben (Algo-Backlog): {e}")
@@ -567,6 +581,18 @@ class FolderMonitor:
                         os.rename(file_path, new_full_path)
                         final_filename = new_name
                         file_path = new_full_path 
+                        
+                        # Update tracking file
+                        try:
+                            tracker_path = os.path.join(STATIC_FOLDER, 'last_detection_filename.txt')
+                            if os.path.exists(tracker_path):
+                                with open(tracker_path, 'r', encoding='utf-8') as f:
+                                    tracked = f.read().strip()
+                                if tracked == old_name:
+                                    with open(tracker_path, 'w', encoding='utf-8') as f:
+                                        f.write(new_name)
+                        except: pass
+                        
                         self.log_callback(f"[{old_name}] ✏️ Umbenannt zu: {final_filename}")
                     except Exception as e:
                         self.log_callback(f"[{file_path.name}] ❌ Fehler beim Umbenennen: {e}")
@@ -585,6 +611,18 @@ class FolderMonitor:
                             
                             target_backlog_path = backlog_dir / file_path.name
                             shutil.move(str(file_path), str(target_backlog_path))
+                            
+                            # Update tracking file
+                            try:
+                                tracker_path = os.path.join(STATIC_FOLDER, 'last_detection_filename.txt')
+                                if os.path.exists(tracker_path):
+                                    with open(tracker_path, 'r', encoding='utf-8') as f:
+                                        tracked = f.read().strip()
+                                    if tracked == file_path.name:
+                                        with open(tracker_path, 'w', encoding='utf-8') as f:
+                                            f.write(target_backlog_path.name)
+                            except: pass
+                            
                             self.log_callback(f"[{final_filename}] ⏳ {match_species} -> Ins Backlog verschoben")
                         except Exception as e:
                             self.log_callback(f"[{final_filename}] ❌ Fehler beim Verschieben (Backlog): {e}")
@@ -997,6 +1035,18 @@ def dashboard():
             df['today_count'] = pd.to_numeric(df['today_count']).fillna(0).astype(int)
             df = df.sort_values(by='count', ascending=False)
             
+        # Check if latest image matches latest db entry
+        images_match = False
+        if last_entry:
+            try:
+                tracker_path = os.path.join(STATIC_FOLDER, 'last_detection_filename.txt')
+                if os.path.exists(tracker_path):
+                    with open(tracker_path, 'r', encoding='utf-8') as f:
+                        tracked = f.read().strip()
+                    if tracked == last_entry['filename']:
+                        images_match = True
+            except: pass
+            
         # NEU: Neue Arten von heute finden (Erstsichtung)
         cursor.execute(f"SELECT species FROM detections GROUP BY species HAVING MIN(timestamp) LIKE '{today_str}%'")
         new_species_raw = [r[0] for r in cursor.fetchall()]
@@ -1097,6 +1147,7 @@ def dashboard():
                                   total_count=total_count,
                                   today_total=today_total,
                                   last_entry=last_entry,
+                                  images_match=images_match,
                                   ts=timestamp_now,
                                   version=APP_VERSION,
                                   ping_active=ping_active,

@@ -1,1 +1,1 @@
-{"threshold": 65, "last_folder": "Z:/", "camera_ip": "192.168.178.96", "count_algo_active": true, "recursive": true, "rename_active": true, "ping_active": true, "backlog_active": true, "greylist_active": true, "delete_active": true}
+{"threshold": 70, "last_folder": "Z:/", "camera_ip": "192.168.178.96", "count_algo_active": true, "recursive": true, "rename_active": true, "ping_active": true, "backlog_active": true, "greylist_active": true, "delete_active": true}

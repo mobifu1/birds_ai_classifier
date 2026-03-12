@@ -69,8 +69,12 @@
                     </div>
                 </div>
 
+                {% if images_match %}
+                <img src="{{ url_for('static', filename='last_detection.jpg') }}?t={{ ts }}" alt="Warte auf Bild..."
+                    style="border: 3px solid #81d4fa; box-sizing: border-box;">
+                {% else %}
                 <img src="{{ url_for('static', filename='last_detection.jpg') }}?t={{ ts }}" alt="Warte auf Bild...">
-
+                {% endif %}
                 <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
                     {% if current_temp is not none %}
                     <div
