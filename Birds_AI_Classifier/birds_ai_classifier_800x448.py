@@ -898,6 +898,71 @@ def analyze_disturbance(df):
     avg_gap = sum([e['gap_mins'] for e in events]) / len(events)
     return f"Im Schnitt wird das Futterhaus nach einem Störereignis für {avg_gap:.1f} Minuten gemieden."
 
+def analyze_anomalies(df):
+    if df.empty:
+        return "Keine Daten für eine Anomalie-Erkennung vorhanden."
+    
+    # Sicherstellen, dass 'date' eine Spalte ist und nicht der Index
+    if 'date' not in df.columns:
+        df['date'] = pd.to_datetime(df['timestamp']).dt.date
+        
+    unique_days = df['date'].nunique()
+    if unique_days < 3:
+        return "Es werden mindestens 3 Tage an Daten benötigt, um sinnvolle Durchschnittswerte für Anomalien zu berechnen."
+
+    anomalies = []
+    
+    # Zählen der Sichtungen pro Art und Tag
+    daily_counts = df.groupby(['date', 'species']).size().unstack(fill_value=0)
+    
+    # Durchschnittliche Sichtungen pro Art pro Tag (über alle Tage im Zeitraum)
+    avg_daily_counts = daily_counts.mean()
+    
+    # 1. Massenansturm: Gestern oder Heute wesentlich mehr als der Durchschnitt?
+    # Wir schauen uns nur die letzten 2 Tage im Datensatz an, um aktuelle Anomalien zu finden
+    recent_days = sorted(daily_counts.index)[-2:] 
+    
+    for day in recent_days:
+        for species in daily_counts.columns:
+            if species in ["Unbekannt", "IGNORED_LOW_CONFIDENCE", "Hintergrund"]:
+                continue
+                
+            count_on_day = daily_counts.loc[day, species]
+            avg_count = avg_daily_counts[species]
+            
+            # Kriterien für Massenansturm: 
+            # - Durchschnittlich mindestens 1 mal pro Tag (um Rauschen bei seltenen Vögeln zu filtern)
+            # - Aktuelle Anzahl ist mind. 3x so hoch wie der Durchschnitt
+            # - Aktuelle Anzahl ist absolut gesehen signifikant (z.B. > 10)
+            if avg_count >= 1 and count_on_day >= (avg_count * 3) and count_on_day > 10:
+                day_str = "Heute" if day == datetime.datetime.now().date() else f"Am {day.strftime('%d.%m.')}"
+                anomalies.append(f"<strong>🚨 Massenansturm:</strong> {day_str} wurde die Art <em>{species}</em> ungewöhnlich oft gesichtet ({int(count_on_day)}x, Normal: ~{int(avg_count)}x pro Tag).")
+
+    # 2. Plötzliches Ausbleiben
+    if unique_days >= 5: # Dafür brauchen wir etwas mehr Historie
+        # Wir definieren "häufige Arten" als solche, die im Durchschnitt mind. 5x pro Tag kommen
+        common_species = avg_daily_counts[avg_daily_counts >= 5].index
+        
+        # Prüfe, ob eine dieser Arten in den letzten 2 Tagen komplett fehlte
+        for species in common_species:
+            if species in ["Unbekannt", "IGNORED_LOW_CONFIDENCE", "Hintergrund"]:
+                continue
+                
+            recent_missing = True
+            for day in recent_days:
+                if daily_counts.loc[day, species] > 0:
+                    recent_missing = False
+                    break
+                    
+            if recent_missing:
+                anomalies.append(f"<strong>⚠️ Plötzliches Ausbleiben:</strong> Die sonst häufige Art <em>{species}</em> (Normal: ~{int(avg_daily_counts[species])}x pro Tag) wurde in letzter Zeit gar nicht mehr gesichtet.")
+
+    if not anomalies:
+        return "<span style='color: #69f0ae;'>Keine auffälligen Anomalien erkannt. Das Verhalten entspricht dem Durchschnitt.</span>"
+        
+    return "<br><br>".join(anomalies)
+
+
 def analyze_diversification(df):
     if df.empty:
         return "Bisher keine Sichtungen in diesem Zeitraum erfasst.", "Keine Daten ➖"
@@ -1016,6 +1081,7 @@ def prediction_dashboard():
     disturbance_text = analyze_disturbance(df)
     diversification_text, diversification_trend = analyze_diversification(df)
     absolute_visitors_text, absolute_visitors_trend = analyze_absolute_visitors(df)
+    anomaly_text = analyze_anomalies(df)
     
     return render_template('prediction.html', 
                                   days=days, 
@@ -1032,6 +1098,7 @@ def prediction_dashboard():
                                   diversification_trend=diversification_trend,
                                   absolute_visitors_text=absolute_visitors_text,
                                   absolute_visitors_trend=absolute_visitors_trend,
+                                  anomaly_text=anomaly_text,
                                   version=APP_VERSION)
 
 @app.route('/')
