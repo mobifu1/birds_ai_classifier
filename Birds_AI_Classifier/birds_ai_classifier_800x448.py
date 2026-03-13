@@ -1019,6 +1019,126 @@ def analyze_absolute_visitors(df):
     text = f"Insgesamt <strong>{total_visitors}</strong> absolute Besucher im ausgewählten Zeitraum ({len(daily_visitors)} Tage ausgewertet)."
     return text, trend_html
 
+def predict_weekly_visitors(df):
+    """
+    Berechnet auf Basis des historischen DataFrames (df) eine Vorhersage
+    für die aktuelle laufende Kalenderwoche.
+    Gibt zurück:
+      - chart_url (base64-PNG)
+      - summary_html (kurzer Text mit Ist/Prognose/Gesamt)
+      - kw_label (z.B. "KW 11  |  10.03. – 16.03.2026")
+    """
+    WEEKDAY_NAMES = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+
+    today = datetime.datetime.now().date()
+    # Montag und Sonntag der aktuellen Woche
+    monday = today - datetime.timedelta(days=today.weekday())
+    sunday = monday + datetime.timedelta(days=6)
+    kw = today.isocalendar()[1]
+    kw_label = (f"KW {kw}  |  {monday.strftime('%d.%m.')} – {sunday.strftime('%d.%m.%Y')}")
+
+    if df.empty:
+        return None, "Nicht genug Daten für eine Wochenvorhersage.", kw_label
+
+    # --- 1. Historische Tagesdurchschnitte pro Wochentag (0=Mo … 6=So) ---
+    df_hist = df.copy()
+    df_hist['weekday'] = df_hist['datetime'].dt.weekday   # 0=Mo
+    df_hist['date']    = df_hist['datetime'].dt.date
+
+    # Nur Tage, die NICHT in der aktuellen Woche liegen, als Trainingsbasis nehmen
+    df_hist = df_hist[df_hist['date'] < monday]
+
+    if df_hist.empty:
+        return None, "Noch keine Historik außerhalb der aktuellen Woche vorhanden.", kw_label
+
+    daily_counts_hist = df_hist.groupby(['date', 'weekday']).size().reset_index(name='count')
+    avg_by_weekday = daily_counts_hist.groupby('weekday')['count'].mean()
+
+    # --- 2. Ist-Werte der aktuellen Woche ---
+    df_this_week = df[df['date'].apply(lambda d: monday <= d <= today)]
+    actual_by_weekday = df_this_week.groupby(df_this_week['datetime'].dt.weekday).size()
+
+    # --- 3. Daten für das Diagramm zusammenstellen ---
+    actuals   = []   # Ist-Werte (0 wenn noch kein Tag)
+    forecasts = []   # Prognose-Werte (0 wenn bereits Ist-Wert)
+    for wd in range(7):
+        day = monday + datetime.timedelta(days=wd)
+        if day <= today:
+            actuals.append(int(actual_by_weekday.get(wd, 0)))
+            forecasts.append(0)
+        else:
+            actuals.append(0)
+            forecasts.append(round(avg_by_weekday.get(wd, 0), 1))
+
+    # --- 4. Kennzahlen ---
+    total_actual   = sum(actuals)
+    total_forecast = sum(forecasts)
+    total_combined = total_actual + total_forecast
+
+    # --- 5. Diagramm zeichnen ---
+    fig, ax = plt.subplots(figsize=(8, 4), facecolor='#1e1e1e')
+    ax.set_facecolor('#1e1e1e')
+
+    x = range(7)
+    bar_width = 0.6
+
+    # Ist-Balken (solide blau)
+    bars_actual = ax.bar(
+        [i for i in x if actuals[i] > 0],
+        [actuals[i] for i in x if actuals[i] > 0],
+        width=bar_width, color='#4fc3f7', label='Ist', zorder=3
+    )
+    # Prognose-Balken (violett, schraffiert / transparent)
+    bars_forecast = ax.bar(
+        [i for i in x if forecasts[i] > 0],
+        [forecasts[i] for i in x if forecasts[i] > 0],
+        width=bar_width, color='#ce93d8', alpha=0.55, label='Prognose',
+        linestyle='--', edgecolor='#ba68c8', linewidth=1.5, zorder=3
+    )
+
+    # Heute markieren
+    today_wd = today.weekday()
+    ax.axvline(today_wd + 0.5, color='#ff9800', linestyle=':', linewidth=1.2, alpha=0.8)
+
+    # Wertbeschriftungen
+    for i, (a, f) in enumerate(zip(actuals, forecasts)):
+        val = a if a > 0 else f
+        if val > 0:
+            ax.text(i, val + max(total_combined / 70, 1), f"{int(val)}",
+                    ha='center', va='bottom', color='white', fontsize=8.5)
+
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(
+        [f"{WEEKDAY_NAMES[i]}\n{(monday + datetime.timedelta(days=i)).strftime('%d.%m.')}" for i in x],
+        color='white', fontsize=8
+    )
+    ax.tick_params(axis='y', colors='white')
+    ax.set_ylabel('Besucher', color='white', fontsize=9)
+    ax.set_title('Besucher-Prognose für die aktuelle Woche', color='white', fontsize=11)
+    ax.legend(facecolor='#2e2e2e', labelcolor='white', fontsize=8)
+    ax.spines[['top', 'right', 'left', 'bottom']].set_color('#444')
+    ax.yaxis.grid(True, color='#333', linestyle='--', linewidth=0.6)
+    ax.set_axisbelow(True)
+
+    plt.tight_layout()
+    img = io.BytesIO()
+    fig.savefig(img, format='png', facecolor='#1e1e1e')
+    img.seek(0)
+    chart_url = base64.b64encode(img.getvalue()).decode()
+    plt.close(fig)
+
+    # --- 6. Zusammenfassungstext ---
+    remaining_days = 7 - (today.weekday() + 1)
+    summary_html = (
+        f"<strong>Bisher diese Woche:</strong> {total_actual} Besucher &nbsp;|&nbsp; "
+        f"<strong>Prognose Restwoche</strong> ({remaining_days} Tage): "
+        f"<span style='color:#ce93d8'>+{int(total_forecast)}</span> &nbsp;|&nbsp; "
+        f"<strong>Gesamtprognose:</strong> <span style='color:#fff176'>~{int(total_combined)}</span>"
+    )
+
+    return chart_url, summary_html, kw_label
+
+
 def fetch_weather_data(config):
     if not config or "API-Key" not in config or "Station-ID" not in config:
         return None, "Wetter-Konfiguration unvollständig."
@@ -1082,6 +1202,7 @@ def prediction_dashboard():
     diversification_text, diversification_trend = analyze_diversification(df)
     absolute_visitors_text, absolute_visitors_trend = analyze_absolute_visitors(df)
     anomaly_text = analyze_anomalies(df)
+    weekly_chart, weekly_summary, weekly_kw_label = predict_weekly_visitors(df)
     
     return render_template('prediction.html', 
                                   days=days, 
@@ -1099,6 +1220,9 @@ def prediction_dashboard():
                                   absolute_visitors_text=absolute_visitors_text,
                                   absolute_visitors_trend=absolute_visitors_trend,
                                   anomaly_text=anomaly_text,
+                                  weekly_chart=weekly_chart,
+                                  weekly_summary=weekly_summary,
+                                  weekly_kw_label=weekly_kw_label,
                                   version=APP_VERSION)
 
 @app.route('/')

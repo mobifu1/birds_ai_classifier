@@ -113,14 +113,39 @@
 
             <!-- 7. Anomalien und Auffälligkeiten -->
             <div class="metric-card">
-                <h3>7. Anomalien & Auffälligkeiten</h3>
+                <h3>7. Anomalien &amp; Auffälligkeiten</h3>
                 <p>Erkennung von starken Abweichungen im Verhalten im Vergleich zu vergangenen Besuchen.</p>
                 <div
                     style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #ff9100; margin-bottom: 10px;">
                     {{ anomaly_text|safe }}
                 </div>
             </div>
+
+            <!-- 8. Wochenvorhersage Besucher -->
+            <div class="metric-card">
+                <h3>8. Wochenvorhersage Besucher</h3>
+                <p>Erwartete Besucher am Futterhaus für die aktuelle Woche auf Basis des eingestellten Analysezeitraums.</p>
+                <div style="font-size: 0.9em; color: #aaa; margin-bottom: 10px;">
+                    📅 <strong>{{ weekly_kw_label }}</strong>
+                </div>
+                {% if weekly_chart %}
+                <div style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #ce93d8; margin-bottom: 12px; font-size: 0.95em;">
+                    {{ weekly_summary|safe }}
+                </div>
+                <div class="chart-container">
+                    <img src="data:image/png;base64,{{ weekly_chart }}" alt="Wochenvorhersage Chart">
+                </div>
+                <div style="font-size: 0.8em; color: #777; margin-top: 8px;">
+                    🔵 Ist-Werte &nbsp;|&nbsp; 🟣 Prognose (Ø Wochentag aus {{ days }}-Tage-Zeitraum) &nbsp;|&nbsp; <span style="color:#ff9800;">▸</span> Heute
+                </div>
+                {% else %}
+                <div style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #ce93d8;">
+                    {{ weekly_summary|safe }}
+                </div>
+                {% endif %}
+            </div>
         </div>
+
 
         <div class="footer">
             {{ version }}
