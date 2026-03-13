@@ -1019,6 +1019,86 @@ def analyze_absolute_visitors(df):
     text = f"Insgesamt <strong>{total_visitors}</strong> absolute Besucher im ausgewählten Zeitraum ({len(daily_visitors)} Tage ausgewertet)."
     return text, trend_html
 
+def analyze_best_observation_time(df):
+    """
+    Berechnet für jede Art die Tagesstunde mit den meisten historischen Sichtungen.
+    Gibt eine HTML-Tabelle zurück, sortiert nach Anzahl der Gesamtsichtungen (häufigste Art zuerst).
+    """
+    SKIP_SPECIES = {'Unbekannt', 'IGNORED_LOW_CONFIDENCE', 'Hintergrund'}
+
+    if df.empty:
+        return "<p>Keine Daten vorhanden.</p>"
+
+    df_filtered = df[~df['species'].isin(SKIP_SPECIES)].copy()
+    if df_filtered.empty:
+        return "<p>Keine auswertbaren Arten vorhanden.</p>"
+
+    # Sichtungen pro Art und Stunde zählen
+    grouped = df_filtered.groupby(['species', 'hour']).size().reset_index(name='count')
+
+    # Gesamt-Sichtungen pro Art (für Sortierung)
+    total_per_species = df_filtered.groupby('species').size().rename('total')
+
+    rows = []
+    for species, species_df in grouped.groupby('species'):
+        species_df = species_df.sort_values('count', ascending=False)
+        best_hour   = int(species_df.iloc[0]['hour'])
+        best_count  = int(species_df.iloc[0]['count'])
+        total       = int(total_per_species.get(species, best_count))
+
+        # Zweite Peakstunde (wenn vorhanden und mind. 60% des Hauptpeaks)
+        second_peak = ""
+        if len(species_df) > 1:
+            second_count = int(species_df.iloc[1]['count'])
+            if second_count >= best_count * 0.6:
+                second_hour = int(species_df.iloc[1]['hour'])
+                second_peak = f" &amp; {second_hour:02d}:00"
+
+        # Balken-Breite als visueller Indikator (relativ zum Maximum)
+        bar_pct = min(100, int((best_count / max(total, 1)) * 100 * 3))
+        bar_pct = min(bar_pct, 100)
+
+        rows.append({
+            'species': species,
+            'best_hour': best_hour,
+            'second_peak': second_peak,
+            'best_count': best_count,
+            'total': total,
+            'bar_pct': bar_pct,
+        })
+
+    # Sortierung: häufigste Art zuerst
+    rows.sort(key=lambda r: r['total'], reverse=True)
+
+    html = (
+        "<table style='width:100%; border-collapse:collapse; font-size:0.9em;'>"
+        "<thead><tr>"
+        "<th style='text-align:left; padding:5px 8px; color:#aaa; font-weight:600; border-bottom:1px solid #333;'>Art</th>"
+        "<th style='text-align:center; padding:5px 8px; color:#aaa; font-weight:600; border-bottom:1px solid #333;'>Beste Zeit</th>"
+        "<th style='text-align:left; padding:5px 8px; color:#aaa; font-weight:600; border-bottom:1px solid #333; min-width:80px;'>Aktivität</th>"
+        "<th style='text-align:right; padding:5px 8px; color:#aaa; font-weight:600; border-bottom:1px solid #333;'>Ges.</th>"
+        "</tr></thead><tbody>"
+    )
+    for r in rows:
+        bar_html = (
+            f"<div style='background:#37474f; border-radius:3px; height:8px;'>"
+            f"<div style='background:#ffca28; width:{r['bar_pct']}%; height:8px; border-radius:3px;'></div>"
+            f"</div>"
+        )
+        html += (
+            f"<tr>"
+            f"<td style='padding:5px 8px; border-bottom:1px solid #2a2a2a;'>{r['species']}</td>"
+            f"<td style='padding:5px 8px; border-bottom:1px solid #2a2a2a; text-align:center; "
+            f"color:#fff176; font-weight:bold;'>{r['best_hour']:02d}:00{r['second_peak']}</td>"
+            f"<td style='padding:5px 8px; border-bottom:1px solid #2a2a2a;'>{bar_html}</td>"
+            f"<td style='padding:5px 8px; border-bottom:1px solid #2a2a2a; text-align:right; "
+            f"color:#aaa;'>{r['total']}</td>"
+            f"</tr>"
+        )
+    html += "</tbody></table>"
+    return html
+
+
 def predict_weekly_visitors(df):
     """
     Berechnet auf Basis des historischen DataFrames (df) eine Vorhersage
@@ -1203,6 +1283,7 @@ def prediction_dashboard():
     absolute_visitors_text, absolute_visitors_trend = analyze_absolute_visitors(df)
     anomaly_text = analyze_anomalies(df)
     weekly_chart, weekly_summary, weekly_kw_label = predict_weekly_visitors(df)
+    best_observation_time_table = analyze_best_observation_time(df)
     
     return render_template('prediction.html', 
                                   days=days, 
@@ -1223,6 +1304,7 @@ def prediction_dashboard():
                                   weekly_chart=weekly_chart,
                                   weekly_summary=weekly_summary,
                                   weekly_kw_label=weekly_kw_label,
+                                  best_observation_time_table=best_observation_time_table,
                                   version=APP_VERSION)
 
 @app.route('/')
