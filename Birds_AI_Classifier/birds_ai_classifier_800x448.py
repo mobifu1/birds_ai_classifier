@@ -1054,8 +1054,8 @@ def predict_weekly_visitors(df):
     daily_counts_hist = df_hist.groupby(['date', 'weekday']).size().reset_index(name='count')
     avg_by_weekday = daily_counts_hist.groupby('weekday')['count'].mean()
 
-    # --- 2. Ist-Werte der aktuellen Woche ---
-    df_this_week = df[df['date'].apply(lambda d: monday <= d <= today)]
+    # --- 2. Ist-Werte der aktuellen Woche (nur abgeschlossene Tage vor heute) ---
+    df_this_week = df[df['date'].apply(lambda d: monday <= d < today)]
     actual_by_weekday = df_this_week.groupby(df_this_week['datetime'].dt.weekday).size()
 
     # --- 3. Daten für das Diagramm zusammenstellen ---
@@ -1063,10 +1063,10 @@ def predict_weekly_visitors(df):
     forecasts = []   # Prognose-Werte (0 wenn bereits Ist-Wert)
     for wd in range(7):
         day = monday + datetime.timedelta(days=wd)
-        if day <= today:
+        if day < today:   # nur abgeschlossene Tage als Ist
             actuals.append(int(actual_by_weekday.get(wd, 0)))
             forecasts.append(0)
-        else:
+        else:             # heute und Zukunft als Prognose
             actuals.append(0)
             forecasts.append(round(avg_by_weekday.get(wd, 0), 1))
 
