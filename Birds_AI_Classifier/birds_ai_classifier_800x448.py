@@ -898,68 +898,107 @@ def analyze_disturbance(df):
     avg_gap = sum([e['gap_mins'] for e in events]) / len(events)
     return f"Im Schnitt wird das Futterhaus nach einem Störereignis für {avg_gap:.1f} Minuten gemieden."
 
-def analyze_anomalies(df):
+def analyze_anomalies(df, df_reference=None):
+    """
+    Erkennt Anomalien (Massenansturm / Plötzliches Ausbleiben).
+
+    df           – Daten des vom Nutzer gewählten Zeitraums (z.B. 7–14 Tage)
+    df_reference – Optionaler längerer Referenz-DataFrame (feste 30 Tage) für
+                   stabile Durchschnittswerte. Falls None, wird df selbst verwendet.
+    """
     if df.empty:
         return "Keine Daten für eine Anomalie-Erkennung vorhanden."
-    
-    # Sicherstellen, dass 'date' eine Spalte ist und nicht der Index
-    if 'date' not in df.columns:
-        df['date'] = pd.to_datetime(df['timestamp']).dt.date
-        
-    unique_days = df['date'].nunique()
-    if unique_days < 3:
+
+    SKIP = {"Unbekannt", "IGNORED_LOW_CONFIDENCE", "Hintergrund"}
+
+    # Sicherstellen, dass 'date' vorhanden ist
+    for frame in [df, df_reference]:
+        if frame is not None and 'date' not in frame.columns:
+            frame['date'] = pd.to_datetime(frame['timestamp']).dt.date
+
+    # --- Referenz-DF für Durchschnitte (bevorzugt der lange 30-Tage-DF) ---
+    ref = df_reference if (df_reference is not None and not df_reference.empty) else df
+
+    ref_unique_days = ref['date'].nunique()
+    if ref_unique_days < 3:
         return "Es werden mindestens 3 Tage an Daten benötigt, um sinnvolle Durchschnittswerte für Anomalien zu berechnen."
 
+    unique_days = df['date'].nunique()
+
     anomalies = []
-    
-    # Zählen der Sichtungen pro Art und Tag
+
+    # Tageszählungen aus dem aktuellen (kurzen) DF – für Massenansturm & recent_days
     daily_counts = df.groupby(['date', 'species']).size().unstack(fill_value=0)
-    
-    # Durchschnittliche Sichtungen pro Art pro Tag (über alle Tage im Zeitraum)
-    avg_daily_counts = daily_counts.mean()
-    
-    # 1. Massenansturm: Gestern oder Heute wesentlich mehr als der Durchschnitt?
-    # Wir schauen uns nur die letzten 2 Tage im Datensatz an, um aktuelle Anomalien zu finden
-    recent_days = sorted(daily_counts.index)[-2:] 
-    
-    for day in recent_days:
+
+    # Tageszählungen aus dem Referenz-DF – für stabile Durchschnitte
+    ref_daily_counts = ref.groupby(['date', 'species']).size().unstack(fill_value=0)
+    avg_daily_counts = ref_daily_counts.mean()  # stabile Basis über 30 Tage
+
+    # 1. Massenansturm: letzten 2 Tage im aktuellen Fenster prüfen
+    recent_days_short = sorted(daily_counts.index)[-2:]
+
+    for day in recent_days_short:
         for species in daily_counts.columns:
-            if species in ["Unbekannt", "IGNORED_LOW_CONFIDENCE", "Hintergrund"]:
+            if species in SKIP:
                 continue
-                
             count_on_day = daily_counts.loc[day, species]
-            avg_count = avg_daily_counts[species]
-            
-            # Kriterien für Massenansturm: 
-            # - Durchschnittlich mindestens 1 mal pro Tag (um Rauschen bei seltenen Vögeln zu filtern)
-            # - Aktuelle Anzahl ist mind. 3x so hoch wie der Durchschnitt
-            # - Aktuelle Anzahl ist absolut gesehen signifikant (z.B. > 10)
+            avg_count = avg_daily_counts.get(species, 0)
+            # Kriterien: typisch >= 1/Tag, heute >= 3× Schnitt, absolut > 10
             if avg_count >= 1 and count_on_day >= (avg_count * 3) and count_on_day > 10:
                 day_str = "Heute" if day == datetime.datetime.now().date() else f"Am {day.strftime('%d.%m.')}"
-                anomalies.append(f"<strong>🚨 Massenansturm:</strong> {day_str} wurde die Art <em>{species}</em> ungewöhnlich oft gesichtet ({int(count_on_day)}x, Normal: ~{int(avg_count)}x pro Tag).")
+                anomalies.append(
+                    f"<strong>🚨 Massenansturm:</strong> {day_str} wurde die Art "
+                    f"<em>{species}</em> ungewöhnlich oft gesichtet "
+                    f"({int(count_on_day)}x, Normal: ~{int(avg_count)}x pro Tag)."
+                )
 
     # 2. Plötzliches Ausbleiben
-    if unique_days >= 5: # Dafür brauchen wir etwas mehr Historie
-        # Wir definieren "häufige Arten" als solche, die im Durchschnitt mind. 5x pro Tag kommen
+    # Braucht mind. 5 Referenztage für eine verlässliche Aussage
+    if ref_unique_days >= 5:
+        # "Häufige Arten": im Referenz-Durchschnitt mind. 5× pro Tag
         common_species = avg_daily_counts[avg_daily_counts >= 5].index
-        
-        # Prüfe, ob eine dieser Arten in den letzten 2 Tagen komplett fehlte
+
+        # Aktuelle Abwesenheitsprüfung: letzte 7 Tage im kurzen DF
+        recent_days_long = sorted(daily_counts.index)[-7:]
+        today = datetime.datetime.now().date()
+
         for species in common_species:
-            if species in ["Unbekannt", "IGNORED_LOW_CONFIDENCE", "Hintergrund"]:
+            if species in SKIP:
                 continue
-                
-            recent_missing = True
-            for day in recent_days:
-                if daily_counts.loc[day, species] > 0:
-                    recent_missing = False
-                    break
-                    
-            if recent_missing:
-                anomalies.append(f"<strong>⚠️ Plötzliches Ausbleiben:</strong> Die sonst häufige Art <em>{species}</em> (Normal: ~{int(avg_daily_counts[species])}x pro Tag) wurde in letzter Zeit gar nicht mehr gesichtet.")
+
+            # Prüfe: War die Art in den letzten 7 Tagen an KEINEM Tag sichtbar?
+            if species in daily_counts.columns:
+                recent_counts = [daily_counts.loc[d, species] for d in recent_days_long]
+                species_missing = all(c == 0 for c in recent_counts)
+            else:
+                # Art kommt im aktuellen DF überhaupt nicht vor → definitiv abwesend
+                species_missing = True
+
+            if species_missing:
+                # Berechne, seit wie vielen Tagen die Art fehlt (im Referenz-DF)
+                if species in ref_daily_counts.columns:
+                    all_dates_with_species = ref_daily_counts.index[
+                        ref_daily_counts[species] > 0
+                    ].tolist()
+                    if all_dates_with_species:
+                        last_seen = max(all_dates_with_species)
+                        days_missing = (today - last_seen).days
+                        since_str = f" (zuletzt gesehen am {last_seen.strftime('%d.%m.%Y')}, vor {days_missing} Tag{'en' if days_missing != 1 else ''})"
+                    else:
+                        since_str = ""
+                else:
+                    since_str = ""
+
+                anomalies.append(
+                    f"<strong>⚠️ Plötzliches Ausbleiben:</strong> Die sonst häufige Art "
+                    f"<em>{species}</em> (Referenzdurchschnitt: ~{int(avg_daily_counts[species])}x/Tag) "
+                    f"wurde in den letzten {len(recent_days_long)} Tagen gar nicht mehr gesichtet"
+                    f"{since_str}."
+                )
 
     if not anomalies:
         return "<span style='color: #69f0ae;'>Keine auffälligen Anomalien erkannt. Das Verhalten entspricht dem Durchschnitt.</span>"
-        
+
     return "<br><br>".join(anomalies)
 
 
@@ -1256,6 +1295,9 @@ def prediction_dashboard():
     if days > 30: days = 30
     
     df = get_prediction_db_data(days)
+    # Langer Referenz-DF (immer 30 Tage) für stabile Anomalie-Durchschnitte –
+    # unabhängig vom gewählten Anzeigebereich des Nutzers.
+    df_reference = get_prediction_db_data(30)
     weather_config = load_weather_config()
     
     busiest_hour, rush_hour_chart = predict_rush_hour(df)
@@ -1281,7 +1323,7 @@ def prediction_dashboard():
     disturbance_text = analyze_disturbance(df)
     diversification_text, diversification_trend = analyze_diversification(df)
     absolute_visitors_text, absolute_visitors_trend = analyze_absolute_visitors(df)
-    anomaly_text = analyze_anomalies(df)
+    anomaly_text = analyze_anomalies(df, df_reference=df_reference)
     weekly_chart, weekly_summary, weekly_kw_label = predict_weekly_visitors(df)
     best_observation_time_table = analyze_best_observation_time(df)
     

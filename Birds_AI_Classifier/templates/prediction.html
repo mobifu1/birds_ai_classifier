@@ -144,7 +144,20 @@
                 </div>
                 {% endif %}
             </div>
+
+            <!-- 9. Beste Beobachtungszeit pro Art -->
+            <div class="metric-card">
+                <h3>9. Beste Beobachtungszeit pro Art</h3>
+                <p>Wann ist die ideale Zeit, um eine bestimmte Vogelart am Futterhaus zu beobachten? (Basis: letzte {{ days }} Tage)</p>
+                <div style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #fff176;">
+                    {{ best_observation_time_table|safe }}
+                </div>
+                <div style="font-size: 0.8em; color: #777; margin-top: 8px;">
+                    🟡 Hauptpeak &nbsp;|&nbsp; Bei zwei Zeiten: beide Stunden liegen nahe beieinander &nbsp;|&nbsp; Ges. = Gesamtsichtungen im Zeitraum
+                </div>
+            </div>
         </div>
+
 
 
         <div class="footer">
