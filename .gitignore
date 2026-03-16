@@ -9,7 +9,9 @@ neue_bilder_downloads/
 new_birds/
 test/
 backlog/
-error_images
+error_images/
+backup_db/
+backup_modells/
 
 # Ignoriere Modell-Files/Database-Files
 *.keras

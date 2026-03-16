@@ -2,9 +2,9 @@
 ==================================================
          TRAININGS-ANALYSE BERICHT
 ==================================================
-Genauigkeit Training:                 95.37%
-Genauigkeit Validierung:              97.36%
-Abweichung (Gap):                     -1.99%
+Genauigkeit Training:                 95.12%
+Genauigkeit Validierung:              93.40%
+Abweichung (Gap):                     1.72%
 --------------------------------------------------
 🟢 GUTES ERGEBNIS! Robustes Modell.
 ==================================================
