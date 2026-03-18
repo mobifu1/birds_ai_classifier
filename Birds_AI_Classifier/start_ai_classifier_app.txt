@@ -26,21 +26,24 @@ Gerne erkläre ich dir die genaue Reihenfolge, in der diese Schritte in deinem C
 
 Die Reihenfolge im Code ist wie folgt aufgebaut (ein Schritt nach dem anderen):
 
-1. Count Algorithm (Algorithmus)
-Dieses Feature wird als Allererstes geprüft. Der Code schaut in deine Kategorien ("lazy", "normal", "hectic") und den Zeitstempel. Stellt der Algorithmus fest, dass das Bild ignoriert werden soll (z.B. weil der gleiche "lazy"-Vogel immer noch da sitzt), wird es sofort in den backlog-Ordner verschoben (als 123456_algo_ignore.jpg). Die Verarbeitung für dieses Bild bricht dann sofort ab. Alle nachfolgenden Schritte (Umbenennen, Blacklist etc.) passieren für dieses Bild nicht mehr.
+1. Ein Bild wird dem Classifier zur Analyse übergeben: Ergebnis= a.) "Unbekannt" da unter Schwellwert / b.) "Klassifiziert" da über Schwellwert  (z.B. Klasse="Blaumeise") und der entsprechenden Klasse zugeordnet.
 
 2. Dateien umbenennen
-Hat das Bild den Algorithmus "überlebt" (d.h. es soll gezählt werden), ist dies der zweite Schritt. Das Bild wird basierend auf dem erkannten Vogel und der Wahrscheinlichkeit (Konfidenz) umbenannt (z.B. in 123456_Rotkehlchen.jpg oder 123456_Unbekannt_Spatz_50pct.jpg). Dies passiert vor allen anderen Filter-Listen, damit beim Verschieben oder Speichern der richtige neue Dateiname genutzt wird.
+Das Bild wird basierend auf der erkannten Vogelart und der Wahrscheinlichkeit (Konfidenz z.B. 65) umbenannt (z.B. in Random_Rotkehlchen.jpg oder Random_Unbekannt.jpg).
+Ergebnis= das Rotkehlchen wird der Klasse Rotkehlchen und der Sperling wird der Klasse Unbekannt zugeordnet.
 
-3. Backlog
-Als Drittes greift die Backlog-Checkbox. Es wird geprüft, ob die erkannte Vogelart (oder "Unbekannt" bei geringer Wahrscheinlichkeit) auf deiner Backlog-Liste steht. Ist das der Fall, wird das frisch umbenannte Bild in den backlog-Ordner verschoben. Auch hier endet die Verarbeitung für das Bild dann sofort. Weder die Greylist noch die Blacklist können dieses Bild jetzt noch löschen, und es wird (regulär) kein Eintrag in die Datenbank gemacht.
+3. Count Algorithm (Algorithmus)
+Der Code schaut nun für die jeweils über dem Schwellwert liegende und somit klassifizierte Vogelart in die Kategorien ("lazy", "normal", "hectic") und den Zeitstempel. Stellt der Algorithmus fest, dass das Bild ignoriert werden soll (z.B. weil der gleiche "lazy"-Vogel immer noch da sitzt), wird es sofort als Random_Occupier.jpg umbenannt und der Klasse "Occupier" zugeordnet.
+Dies gilt auch für normal_timers und wird zu Random_Timer.jpg umbenannt und der Klasse "Timer" zugeordnet.
 
-4. Greylist
-Wurde das Bild nicht ins Backlog verschoben, kommt als Viertes die Greylist. Steht der Vogel auf der Greylist, wird das Bild gelöscht (damit die Festplatte nicht voll wird), aber die Sichtung wird trotzdem in die Datenbank eingetragen. Danach wird zum nächsten Bild gesprungen.
+4. Backlog
+Nun greift die Backlog-Checkbox. Es wird geprüft, ob die erkannte Vogelart oder auch "Unbekannt", "Occupier","Timers" auf deiner Backlog-Liste stehen. Ist das der Fall, wird das frisch umbenannte Bild in den backlog-Ordner verschoben. Auch hier endet die Verarbeitung für das Bild dann sofort. Weder die Greylist noch die Blacklist können dieses Bild jetzt noch löschen, und es wird (regulär) kein Eintrag in die Datenbank gemacht.
 
-5. Blacklist (inklusive "Papierkorb" / Unter Schwellenwert)
-Hat das Bild auch die Greylist überstanden, kommt ganz zum Schluss die Blacklist-Prüfung. Hier wird kontrolliert, ob der Vogel auf der Blacklist (inkl. "Hintergrund") steht ODER ob die Erkennungs-Wahrscheinlichkeit zu gering war (< threshold). Ist das erfüllt, wird das Bild gnadenlos gelöscht. Es erfolgt kein Eintrag in die Datenbank.
+5. Greylist
+Wurde das Bild nicht ins Backlog verschoben, kommt als Viertes die Greylist. Steht die erkannte Vogelart oder auch "Unbekannt", "Occupier","Timers" auf der Greylist, wird das Bild gelöscht (damit die Festplatte nicht voll wird), aber die Sichtung wird trotzdem in die Datenbank eingetragen. Danach wird zum nächsten Bild gesprungen.
 
-Zusammenfassung des "Überlebensweges" eines Bildes:
+6. Blacklist
+Hat das Bild auch die Greylist überstanden, kommt ganz zum Schluss die Blacklist-Prüfung. Hier wird kontrolliert, ob die erkannte Vogelart oder auch "Unbekannt", "Occupier","Timers" auf der Blacklist stehen. Ist das erfüllt, wird das Bild gnadenlos gelöscht. Es erfolgt kein Eintrag in die Datenbank.
 
-Bekommt ein Bild das "Go" vom Count Algorithm > wird es umbenannt > rutscht es vielleicht sicher ins Backlog > oder wird unsichtbar in die Datenbank per Greylist gerettet > oder verendet in der Blacklist. Wenn es keinen dieser Filter getriggert hat, bleibt das Bild wunderschön im Ordner liegen und wird am Ende normal mit Namen in die Datenbank eingetragen.
+7. Final
+Hat das Bild alles überlebt wird es in der Datenbank eingetragen.

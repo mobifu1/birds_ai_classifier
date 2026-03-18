@@ -153,7 +153,7 @@ def save_greylist(greylist_set):
     except: pass
 
 def load_blacklist():
-    defaults = {"Hintergrund", "Unbekannt"}
+    defaults = {"Unbekannt"}
     if os.path.exists(BLACKLIST_FILE):
         try:
             with open(BLACKLIST_FILE, 'r', encoding='utf-8') as f:
@@ -304,7 +304,7 @@ class BirdAI:
 # --- HINTERGRUND ÜBERWACHUNG ---
 class FolderMonitor:
     def __init__(self, update_log_callback, get_threshold_callback, update_size_callback, 
-                 get_rename_callback, get_delete_callback, 
+                 get_delete_callback, 
                  get_greylist_active_callback, get_greylist_callback,
                  get_backlog_active_callback, get_backlog_callback,
                  get_blacklist_callback, update_duration_callback=None,
@@ -316,7 +316,6 @@ class FolderMonitor:
         self.log_callback = update_log_callback
         self.get_threshold = get_threshold_callback
         self.update_size_callback = update_size_callback
-        self.get_rename_enabled = get_rename_callback
         self.get_delete_enabled = get_delete_callback
         self.get_greylist_active = get_greylist_active_callback
         self.get_greylist = get_greylist_callback
@@ -428,7 +427,6 @@ class FolderMonitor:
         if len(new_files) > 0:
             files_to_process = sorted(new_files, key=lambda f: get_original_date(str(f)))
             current_threshold = self.get_threshold() 
-            rename_active = self.get_rename_enabled() 
             delete_unsure_active = self.get_delete_enabled() 
             greylist_active = self.get_greylist_active()
             current_greylist = self.get_greylist()
@@ -497,57 +495,110 @@ class FolderMonitor:
 
                 conf_percent = int(conf * 100)
                 timestamp = get_original_date(str(file_path))
-                final_filename = file_path.name
                 
+                # 1. Classification (Unbekannt oder Klasse)
+                if conf_percent < current_threshold:
+                    species = "Unbekannt"
+                else:
+                    species = species.replace(" ", "_")
+                
+                # 2. Files umbenennen (Random + Class)
+                file_ext = file_path.suffix
+                clean_species = species
+                while True:
+                    rand_id = random.randint(100000, 999999)
+                    new_name = f"{rand_id}_{clean_species}{file_ext}"
+                    new_full_path = file_path.parent / new_name
+                    if not new_full_path.exists():
+                        break
+                        
+                old_name = file_path.name
+                try:
+                    os.rename(file_path, new_full_path)
+                    final_filename = new_name
+                    file_path = new_full_path
+                    try:
+                        tracker_path = os.path.join(STATIC_FOLDER, 'last_detection_filename.txt')
+                        if os.path.exists(tracker_path):
+                            with open(tracker_path, 'r', encoding='utf-8') as f:
+                                tracked = f.read().strip()
+                            if tracked == old_name:
+                                with open(tracker_path, 'w', encoding='utf-8') as f:
+                                    f.write(new_name)
+                    except: pass
+                    self.log_callback(f"[{old_name}] ✏️ Umbenannt zu: {final_filename}")
+                except Exception as e:
+                    self.log_callback(f"[{file_path.name}] ❌ Fehler beim Umbenennen: {e}")
+                    final_filename = file_path.name
+
+                # 3. Count Algorithm (Algorithmus)
                 algo_active = self.get_algo_active()
-                algo_ignore = False
-                
-                if algo_active:
+                if algo_active and conf_percent >= current_threshold and species != "Unbekannt":
                     try:
                         img_time = time.mktime(datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S").timetuple())
                     except Exception:
                         img_time = time.time()
-
-                    if conf_percent >= current_threshold:
-                        if species not in ["Hintergrund", "Unbekannt"]:
-                            cat = self.categories.get(species, "normal").lower()
-                            if cat == "lazy":
-                                if self.lazy_occupier == species:
-                                    algo_ignore = "occupy"
-                                    self.log_callback(f"[{final_filename}] ⏳ {species} -> Ignoriert (Algorithmus: Lazy Occupier)")
-                                else:
-                                    # Neue Vogelart (Lazy), also Platz neu besetzen
-                                    self.lazy_occupier = species
+                        
+                    cat = self.categories.get(species.replace("_", " "), "normal").lower()
+                    ignore_type = None
+                    
+                    if cat == "lazy":
+                        if self.lazy_occupier == species:
+                            ignore_type = "Occupier"
+                            self.log_callback(f"[{final_filename}] ⏳ {species} -> Ignoriert (Algorithmus: Lazy Occupier)")
+                        else:
+                            self.lazy_occupier = species
                                     
-                            elif cat == "normal":
-                                self.lazy_occupier = None # Futterplatz wieder frei
-                                now = img_time
-                                last_seen = self.normal_timers.get(species, 0)
-                                if (now - last_seen) < 120:
-                                    algo_ignore = "time"
-                                    self.log_callback(f"[{final_filename}] ⏳ {species} -> Ignoriert (Algorithmus: Normal < 2 Min)")
-                                else:
-                                    self.normal_timers[species] = now
-                                    
-                            elif cat == "hectic":
-                                self.lazy_occupier = None # Futterplatz wieder frei
-                                # Wird sofort gezählt
-                        elif species == "Hintergrund":
-                             # Hintergrund sicher erkannt -> Platz ist wieder frei
-                             self.lazy_occupier = None
+                    elif cat == "normal":
+                        self.lazy_occupier = None 
+                        last_seen = self.normal_timers.get(species, 0)
+                        if (img_time - last_seen) < 120:
+                            ignore_type = "Timers"
+                            self.log_callback(f"[{final_filename}] ⏳ {species} -> Ignoriert (Algorithmus: Normal < 2 Min)")
+                        else:
+                            self.normal_timers[species] = img_time
+                            
+                    elif cat == "hectic":
+                        self.lazy_occupier = None 
+                        
+                    if ignore_type: # "Occupier" or "Timers"
+                        old_name = file_path.name
+                        species = ignore_type
+                        clean_species = species
+                        file_ext = file_path.suffix
+                        while True:
+                            rand_id = random.randint(100000, 999999)
+                            new_name = f"{rand_id}_{clean_species}{file_ext}"
+                            new_full_path = file_path.parent / new_name
+                            if not new_full_path.exists():
+                                break
+                        try:
+                            os.rename(file_path, new_full_path)
+                            final_filename = new_name
+                            file_path = new_full_path
+                            try:
+                                tracker_path = os.path.join(STATIC_FOLDER, 'last_detection_filename.txt')
+                                if os.path.exists(tracker_path):
+                                    with open(tracker_path, 'r', encoding='utf-8') as f:
+                                        tracked = f.read().strip()
+                                    if tracked == old_name:
+                                        with open(tracker_path, 'w', encoding='utf-8') as f:
+                                            f.write(new_name)
+                            except: pass
+                            self.log_callback(f"[{old_name}] ✏️ Umbenannt zu: {final_filename}")
+                        except Exception as e:
+                            self.log_callback(f"[{file_path.name}] ❌ Fehler beim Umbenennen: {e}")
 
-                if algo_ignore:
-                    # Bild ins Backlog verschieben als _algo_ignore_<reason> und in DB nicht speichern
+                # 4. Backlog
+                backlog_active = self.get_backlog_active()
+                if backlog_active and species in current_backlog:
                     try:
                         app_dir = Path(os.path.abspath(os.path.dirname(__file__)))
                         backlog_dir = app_dir / "backlog"
                         backlog_dir.mkdir(exist_ok=True)
-                        file_ext = file_path.suffix
-                        rand_id = random.randint(100000, 999999)
-                        target_backlog_path = backlog_dir / f"{rand_id}_algo_ignore_{algo_ignore}{file_ext}"
+                        target_backlog_path = backlog_dir / file_path.name
                         shutil.move(str(file_path), str(target_backlog_path))
                         
-                        # Update tracking file
                         try:
                             tracker_path = os.path.join(STATIC_FOLDER, 'last_detection_filename.txt')
                             if os.path.exists(tracker_path):
@@ -557,79 +608,13 @@ class FolderMonitor:
                                     with open(tracker_path, 'w', encoding='utf-8') as f:
                                         f.write(target_backlog_path.name)
                         except: pass
-                        
-                        self.log_callback(f"[{final_filename}] ⏳ Verschiebe ignoriertes Bild ins Backlog -> {target_backlog_path.name}")
+                        self.log_callback(f"[{final_filename}] ⏳ {species} -> Ins Backlog verschoben")
                     except Exception as e:
-                        self.log_callback(f"[{final_filename}] ❌ Fehler beim Verschieben (Algo-Backlog): {e}")
+                        self.log_callback(f"[{final_filename}] ❌ Fehler beim Verschieben (Backlog): {e}")
                     continue
                 
-                if rename_active:
-                    try:
-                        if not os.path.exists(file_path): continue
-                        file_ext = file_path.suffix
-                        if conf_percent >= current_threshold:
-                            clean_species = species.replace(" ", "_")
-                        else:
-                            clean_species = f"Unbekannt_{species.replace(' ', '_')}_{conf_percent}pct"
-                        while True:
-                            rand_id = random.randint(100000, 999999)
-                            new_name = f"{rand_id}_{clean_species}{file_ext}"
-                            new_full_path = file_path.parent / new_name
-                            if not new_full_path.exists():
-                                break
-                        old_name = file_path.name
-                        os.rename(file_path, new_full_path)
-                        final_filename = new_name
-                        file_path = new_full_path 
-                        
-                        # Update tracking file
-                        try:
-                            tracker_path = os.path.join(STATIC_FOLDER, 'last_detection_filename.txt')
-                            if os.path.exists(tracker_path):
-                                with open(tracker_path, 'r', encoding='utf-8') as f:
-                                    tracked = f.read().strip()
-                                if tracked == old_name:
-                                    with open(tracker_path, 'w', encoding='utf-8') as f:
-                                        f.write(new_name)
-                        except: pass
-                        
-                        self.log_callback(f"[{old_name}] ✏️ Umbenannt zu: {final_filename}")
-                    except Exception as e:
-                        self.log_callback(f"[{file_path.name}] ❌ Fehler beim Umbenennen: {e}")
-
-                if backlog_active:
-                    is_low_confidence = (conf_percent < current_threshold)
-                    # Wenn das Bild unter dem Threshold liegt, behandeln wir es für den Backlog-Filter als "Unbekannt"
-                    match_species = "Unbekannt" if is_low_confidence else species
-                    
-                    if species in current_backlog or match_species in current_backlog:
-                        try:
-                            # Der backlog Ordner liegt ab jetzt direkt im Verzeichnis des Python Skripts
-                            app_dir = Path(os.path.abspath(os.path.dirname(__file__)))
-                            backlog_dir = app_dir / "backlog"
-                            backlog_dir.mkdir(exist_ok=True)
-                            
-                            target_backlog_path = backlog_dir / file_path.name
-                            shutil.move(str(file_path), str(target_backlog_path))
-                            
-                            # Update tracking file
-                            try:
-                                tracker_path = os.path.join(STATIC_FOLDER, 'last_detection_filename.txt')
-                                if os.path.exists(tracker_path):
-                                    with open(tracker_path, 'r', encoding='utf-8') as f:
-                                        tracked = f.read().strip()
-                                    if tracked == file_path.name:
-                                        with open(tracker_path, 'w', encoding='utf-8') as f:
-                                            f.write(target_backlog_path.name)
-                            except: pass
-                            
-                            self.log_callback(f"[{final_filename}] ⏳ {match_species} -> Ins Backlog verschoben")
-                        except Exception as e:
-                            self.log_callback(f"[{final_filename}] ❌ Fehler beim Verschieben (Backlog): {e}")
-                        continue
-                    elif is_low_confidence:
-                        self.log_callback(f"[{final_filename}] ℹ️ Bild ist unter Schwellwert ({conf_percent}%), aber '{match_species}' ist nicht im Backlog aktiviert.")
-                
+                # 5. Greylist
+                greylist_active = self.get_greylist_active()
                 if greylist_active and species in current_greylist:
                     try:
                         if os.path.exists(file_path):
@@ -644,30 +629,25 @@ class FolderMonitor:
                     except sqlite3.IntegrityError: pass
                     continue 
                 
+                # 6. Blacklist
                 is_blacklisted = (species in current_blacklist) 
-                should_delete_trash = delete_unsure_active and (conf_percent < current_threshold or is_blacklisted)
-
-                if should_delete_trash:
+                should_delete_trash = delete_unsure_active and conf_percent < current_threshold
+                if is_blacklisted or should_delete_trash:
                     try:
                         if os.path.exists(file_path):
                             os.remove(file_path)
                             reason = "Blacklist" if is_blacklisted else "Unsicher"
-                            self.log_callback(f"[{final_filename}] 🗑️ {species} ({conf_percent}%) -> Gelöscht ({reason})")
+                            self.log_callback(f"[{final_filename}] 🗑️ {species} -> Gelöscht ({reason})")
                     except Exception as e:
                         self.log_callback(f"[{final_filename}] ❌ Fehler beim Löschen (Trash): {e}")
                     continue 
 
+                # 7. Speichern in DB
                 try:
-                    if conf_percent >= current_threshold:
-                        c.execute("INSERT INTO detections (filename, species, timestamp, confidence) VALUES (?, ?, ?, ?)",
-                                  (final_filename, species, timestamp, conf))
-                        conn.commit()
-                        self.log_callback(f"[{final_filename}] ✅ {species} ({conf_percent}%) -> Gespeichert")
-                    else:
-                        c.execute("INSERT INTO detections (filename, species, timestamp, confidence) VALUES (?, ?, ?, ?)",
-                                  (final_filename, "IGNORED_LOW_CONFIDENCE", timestamp, conf))
-                        conn.commit()
-                        self.log_callback(f"[{final_filename}] ❌ {species} ({conf_percent}%) -> Ignoriert (DB)")
+                    c.execute("INSERT INTO detections (filename, species, timestamp, confidence) VALUES (?, ?, ?, ?)",
+                              (final_filename, species, timestamp, conf))
+                    conn.commit()
+                    self.log_callback(f"[{final_filename}] ✅ {species} ({conf_percent}%) -> Gespeichert")
                 except sqlite3.IntegrityError: 
                     self.log_callback(f"[{final_filename}] ⚠️ Bild bereits in der Datenbank (Integrity Error).") 
             
@@ -1729,7 +1709,6 @@ class BirdAppController:
             update_log_callback=self.update_log, 
             get_threshold_callback=lambda: self.settings.get("threshold", 70),
             update_size_callback=self.update_size_display,
-            get_rename_callback=lambda: self.settings.get("rename_active", True),
             get_delete_callback=lambda: self.settings.get("delete_active", True),
             get_greylist_active_callback=lambda: self.settings.get("greylist_active", True), 
             get_greylist_callback=lambda: self.greylist,
@@ -1810,8 +1789,7 @@ class BirdAppController:
         recursive = self.settings.get("recursive", True)
         if not getattr(self.monitor, 'running', False):
             self.monitor.start(path, recursive)
-            infos = []
-            if self.settings.get("rename_active", True): infos.append("Rename")
+            infos = ["Rename"]
             if self.settings.get("delete_active", True): infos.append(f"Blacklist ({len(self.blacklist)} Arten)")
             if self.settings.get("backlog_active", True): infos.append(f"Backlog ({len(self.backlog)} Arten)")
             if self.settings.get("greylist_active", True): infos.append(f"Greylist ({len(self.greylist)} Arten)")
@@ -1986,7 +1964,6 @@ def settings_page():
                     </div>
                     
                     <div style="margin-top: 20px;">
-                        <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="rename_active" {'checked' if s.get('rename_active', True) else ''}> <label>Dateien umbenennen (Random + Class)</label></div>
                         <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="ping_active" {'checked' if s.get('ping_active', True) else ''}> <label style="color:darkgreen;">Camera: ping aktiv</label></div>
                         <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="count_algo_active" {'checked' if s.get('count_algo_active', True) else ''}> <label style="color:purple;">Count Algorithm (Hectic/Normal/Lazy)</label></div>
                     </div>
@@ -2068,7 +2045,6 @@ def settings_page():
                         recursive: document.getElementById('recursive').checked,
                         camera_ip: document.getElementById('camera_ip').value,
                         threshold: parseInt(document.getElementById('threshold').value),
-                        rename_active: document.getElementById('rename_active').checked,
                         ping_active: document.getElementById('ping_active').checked,
                         count_algo_active: document.getElementById('count_algo_active').checked,
                         backlog_active: document.getElementById('backlog_active').checked,
