@@ -1864,6 +1864,22 @@ class BirdAppController:
         except Exception as e: 
             return f"Fehler: {e}"
 
+    def backup_database(self):
+        try:
+            backup_dir = "backup_db"
+            if not os.path.exists(backup_dir):
+                os.makedirs(backup_dir)
+            current_date = datetime.datetime.now().strftime("%d.%m.%Y")
+            backup_filename = f"birds_stats_{current_date}.db"
+            backup_path = os.path.join(backup_dir, backup_filename)
+            shutil.copy2(DB_FILE, backup_path)
+            self.update_log(f"Datenbank Backup erstellt: {backup_filename}")
+            return f"Backup erfolgreich gespeichert: {backup_filename}"
+        except Exception as e:
+            msg = f"Fehler beim Backup: {e}"
+            self.update_log(msg)
+            return msg
+
 app_controller = BirdAppController()
 
 # --- WEB ENDPOINTS (SETTINGS & CONTROL) ---
@@ -1940,6 +1956,7 @@ def settings_page():
                     <button class="btn btn-red" onclick="stopMonitor()" id="btn-stop">Stoppen</button>
                     <button class="btn btn-orange" onclick="dbSync()">Datenbank zeitlich sortieren</button>
                     <button class="btn btn-red" disabled style="opacity: 0.5; cursor: not-allowed;" onclick="dbReset()">DB Reset (Alles löschen)</button>
+                    <button class="btn btn-blue" onclick="dbBackup()">DB Backup in backup_db</button>
                     <a href="/manual_entry" class="btn btn-blue" style="text-decoration: none; display: flex; align-items: center; padding: 10px 15px;">➕ Manueller Eintrag</a>
                 </div>
                 <h3>Status-Log</h3>
@@ -2040,6 +2057,10 @@ def settings_page():
                 }}
             }}
 
+            function dbBackup() {{
+                fetch('/api/control/dbbackup', {{ method: 'POST' }}).then(r=>r.json()).then(d=>alert(d.msg));
+            }}
+
             function saveSettings() {{
                 const data = {{
                     settings: {{
@@ -2121,6 +2142,11 @@ def api_dbsync():
 @app.route('/api/control/dbreset', methods=['POST'])
 def api_dbreset():
     msg = app_controller.reset_database()
+    return jsonify({"msg": msg})
+
+@app.route('/api/control/dbbackup', methods=['POST'])
+def api_dbbackup():
+    msg = app_controller.backup_database()
     return jsonify({"msg": msg})
 
 @app.route('/api/settings/save', methods=['POST'])

@@ -39,6 +39,7 @@
                 <button class="btn btn-orange" onclick="dbSync()">Datenbank zeitlich sortieren</button>
                 <button class="btn btn-red" disabled style="opacity: 0.5; cursor: not-allowed;" onclick="dbReset()">DB
                     Reset (Alles löschen)</button>
+                <button class="btn btn-blue" onclick="dbBackup()">DB Backup in backup_db</button>
                 <a href="/manual_entry" class="btn btn-blue" style="text-decoration: none;">➕ Manueller Eintrag</a>
             </div>
             <h3>Status-Log</h3>
@@ -147,6 +148,10 @@
                     fetch('/api/control/dbreset', { method: 'POST' }).then(r => r.json()).then(d => alert(d.msg));
                 }
             }
+        }
+
+        function dbBackup() {
+            fetch('/api/control/dbbackup', { method: 'POST' }).then(r => r.json()).then(d => alert(d.msg));
         }
 
         function saveSettings() {
