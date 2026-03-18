@@ -138,6 +138,41 @@ def prepare_shuffled_dataset():
                     print(f"Fehler bei Bild {file}: {e}")
     print(f"Fertig. {count} Bilder vorbereitet.")
 
+class PerClassMetricsCallback(tf.keras.callbacks.Callback):
+    def __init__(self, validation_generator):
+        super().__init__()
+        self.val_gen = validation_generator
+        self.class_indices = validation_generator.class_indices
+        self.labels = {v: k for k, v in self.class_indices.items()}
+        self.log_file = "results_ai_training.txt"
+
+    def on_epoch_end(self, epoch, logs=None):
+        print(f"\nBerechne klassenspezifische Metriken für Epoche {epoch + 1}...")
+        self.val_gen.reset()
+        
+        y_true = self.val_gen.classes
+        predictions = self.model.predict(self.val_gen, steps=len(self.val_gen), verbose=0)
+        y_pred = np.argmax(predictions, axis=1)
+        
+        num_classes = len(self.labels)
+        class_correct = [0] * num_classes
+        class_total = [0] * num_classes
+        
+        for t, p in zip(y_true, y_pred):
+            class_total[t] += 1
+            if t == p:
+                class_correct[t] += 1
+                
+        with open(self.log_file, "a", encoding="utf-8") as f:
+            f.write(f"--- Epoche {epoch + 1} ---\n")
+            for i in range(num_classes):
+                total = class_total[i]
+                acc = (class_correct[i] / total * 100) if total > 0 else 0.0
+                class_name = self.labels[i]
+                f.write(f"Klasse '{class_name}': {acc:.2f}% Genauigkeit ({class_correct[i]}/{total})\n")
+            f.write("\n")
+        print(f"Klassenspezifische Ergebnisse an '{self.log_file}' angehängt.\n")
+
 def check_data_before_start():
     if not os.path.exists(DATASET_PFAD):
         print(f"FEHLER: Der Ordner '{DATASET_NAME}' existiert nicht!")
@@ -174,7 +209,8 @@ def train():
         target_size=IMG_SIZE,
         batch_size=BATCH_SIZE,
         class_mode='categorical',
-        subset='validation'
+        subset='validation',
+        shuffle=False
     )
 
     if train_generator.samples == 0:
@@ -224,7 +260,8 @@ def train():
     callbacks_list = [
         EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=True, verbose=1),
         ModelCheckpoint(MODEL_DATEI, monitor='val_accuracy', save_best_only=True, mode='max', verbose=1),
-        ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=4, min_lr=1e-7, verbose=1)
+        ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=4, min_lr=1e-7, verbose=1),
+        PerClassMetricsCallback(validation_generator)
     ]
 
     print("Starte Training...")
