@@ -1379,8 +1379,10 @@ def dashboard():
         new_species_raw = [r[0] for r in cursor.fetchall()]
         new_species_today = [sp for sp in new_species_raw if sp not in ('Unbekannt', 'IGNORED_LOW_CONFIDENCE')]
             
-        one_hour_ago_str = (datetime.datetime.now() - datetime.timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
-        cursor.execute(f"SELECT COUNT(*) FROM detections WHERE timestamp >= '{one_hour_ago_str}'")
+        now = datetime.datetime.now()
+        now_str = now.strftime('%Y-%m-%d %H:%M:%S')
+        one_hour_ago_str = (now - datetime.timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+        cursor.execute(f"SELECT COUNT(*) FROM detections WHERE timestamp >= '{one_hour_ago_str}' AND timestamp <= '{now_str}'")
         row_vph = cursor.fetchone()
         if row_vph:
             visitors_per_hour = row_vph[0]
