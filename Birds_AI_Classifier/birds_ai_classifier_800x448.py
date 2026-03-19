@@ -1338,6 +1338,7 @@ def dashboard():
     
     conn = sqlite3.connect(DB_FILE, timeout=10)
     last_entry = None
+    visitors_per_hour = 0
     try:
         query = f"""
             SELECT 
@@ -1378,6 +1379,12 @@ def dashboard():
         new_species_raw = [r[0] for r in cursor.fetchall()]
         new_species_today = [sp for sp in new_species_raw if sp not in ('Unbekannt', 'IGNORED_LOW_CONFIDENCE')]
             
+        one_hour_ago_str = (datetime.datetime.now() - datetime.timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+        cursor.execute(f"SELECT COUNT(*) FROM detections WHERE timestamp >= '{one_hour_ago_str}'")
+        row_vph = cursor.fetchone()
+        if row_vph:
+            visitors_per_hour = row_vph[0]
+            
     except: 
         df = pd.DataFrame()
         new_species_today = []
@@ -1405,6 +1412,14 @@ def dashboard():
     except:
         pass
         
+    minutes_passed = 0
+    if last_entry and 'timestamp' in last_entry:
+        try:
+            last_time = datetime.datetime.strptime(last_entry['timestamp'], '%Y-%m-%d %H:%M:%S')
+            minutes_passed = int((datetime.datetime.now() - last_time).total_seconds() / 60)
+        except:
+            pass
+
     total_count = df['count'].sum() if not df.empty else 0
     today_total = df['today_count'].sum() if not df.empty else 0
     unknown_percent_str = "0.0 %"
@@ -1480,7 +1495,9 @@ def dashboard():
                                   futterplatz_occupy=futterplatz_occupy,
                                   futterplatz_time_locks=futterplatz_time_locks,
                                   new_species_today=new_species_today,
-                                  current_temp=current_temp)
+                                  current_temp=current_temp,
+                                  visitors_per_hour=visitors_per_hour,
+                                  minutes_passed=minutes_passed)
 
 @app.route('/weekly')
 def weekly_stats():
