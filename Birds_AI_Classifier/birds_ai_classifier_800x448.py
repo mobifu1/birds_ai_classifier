@@ -55,6 +55,7 @@ GREYLIST_FILE = "greylist.json"
 BLACKLIST_FILE = "blacklist.json" 
 BACKLOG_FILE = "backlog.json"
 SETTINGS_FILE = "settings.json" 
+RECORDS_FILE = "records.json"
 FLASK_PORT = 5000
 CHECK_INTERVAL_SECONDS = 5 
 STATIC_FOLDER = "static" 
@@ -110,6 +111,22 @@ def save_setting(key, value):
             json.dump(data, f)
     except Exception as e:
         print(f"Fehler beim Speichern der Settings: {e}")
+
+def load_records():
+    if os.path.exists(RECORDS_FILE):
+        try:
+            with open(RECORDS_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+def save_records(data):
+    try:
+        with open(RECORDS_FILE, 'w') as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"Fehler beim Speichern der Records: {e}")
 
 # --- HELFER: ORDNERGRÖSSE ---
 def get_dir_size_mb(folder, recursive=False):
@@ -1482,6 +1499,28 @@ def dashboard():
     except Exception:
         current_temp = None
 
+    records = load_records()
+    record_visitors_today = False
+    record_visitors_per_hour = False
+    updated_records = False
+    
+    max_today = records.get("today_total", 0)
+    if today_total > 0 and today_total >= max_today:
+        record_visitors_today = True
+        if today_total > max_today:
+            records["today_total"] = int(today_total)
+            updated_records = True
+            
+    max_vph = records.get("visitors_per_hour", 0)
+    if visitors_per_hour > 0 and visitors_per_hour >= max_vph:
+        record_visitors_per_hour = True
+        if visitors_per_hour > max_vph:
+            records["visitors_per_hour"] = int(visitors_per_hour)
+            updated_records = True
+            
+    if updated_records:
+        save_records(records)
+
     return render_template('index.html',
                                   chart_url=chart_url, 
                                   df=df, 
@@ -1499,7 +1538,9 @@ def dashboard():
                                   new_species_today=new_species_today,
                                   current_temp=current_temp,
                                   visitors_per_hour=visitors_per_hour,
-                                  minutes_passed=minutes_passed)
+                                  minutes_passed=minutes_passed,
+                                  record_visitors_today=record_visitors_today,
+                                  record_visitors_per_hour=record_visitors_per_hour)
 
 @app.route('/weekly')
 def weekly_stats():
