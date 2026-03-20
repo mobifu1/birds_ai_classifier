@@ -1548,8 +1548,8 @@ def weekly_stats():
     query = """
     SELECT 
         CASE WHEN species = 'IGNORED_LOW_CONFIDENCE' THEN 'Unbekannt' ELSE species END as species,
-        strftime('%Y-%W', timestamp) as week_sort,
-        strftime('%W', timestamp) || '<br><small style=''color:#aaa''>''' || substr(strftime('%Y', timestamp), 3, 2) || '</small>' as week_display,
+        strftime('%Y-', timestamp) || printf('%02d', CAST(strftime('%W', timestamp) AS INTEGER) + 1) as week_sort,
+        printf('%02d', CAST(strftime('%W', timestamp) AS INTEGER) + 1) || '<br><small style=''color:#aaa''>''' || substr(strftime('%Y', timestamp), 3, 2) || '</small>' as week_display,
         COUNT(*) as counts
     FROM detections
     WHERE timestamp IS NOT NULL AND timestamp != ''
