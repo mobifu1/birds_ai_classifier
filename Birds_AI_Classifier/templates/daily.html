@@ -89,6 +89,13 @@
             &sum; Gesamtsumme: {{ total_birds_day }}
         </div>
 
+        {% if first_bird %}
+        <div style="font-size: 1.2em; margin: 15px 0; padding: 15px; background: #263238; border-radius: 8px; border: 1px solid #37474f;">
+            🌅 <strong style="color: #ff9800;">Erster Besucher des Tages:</strong> {{ first_bird }} 
+            <span style="font-size: 0.9em; color: #aaa;">(um {{ first_bird_time }} Uhr)</span>
+        </div>
+        {% endif %}
+
         {% if chart_url %}
         <div style="text-align:center; margin-top: 20px;">
             <img src="data:image/png;base64,{{ chart_url }}" alt="Daily Chart"

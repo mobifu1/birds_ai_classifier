@@ -1691,6 +1691,10 @@ def daily_stats():
         # 2. Zeitstempel in Pandas-Datetime konvertieren
         df['datetime'] = pd.to_datetime(df['timestamp'])
         
+        first_bird_row = df.sort_values(by='datetime').iloc[0]
+        first_bird = first_bird_row['species']
+        first_bird_time = first_bird_row['datetime'].strftime('%H:%M:%S')
+
         # 3. Aggregation (Zusammenfassen der Sichtungen pro Stunde)
         # Wir extrahieren die Stunde (0-23) aus dem Datetime-Objekt
         df['hour'] = df['datetime'].dt.hour
@@ -1735,6 +1739,10 @@ def daily_stats():
         chart_url = base64.b64encode(img.getvalue()).decode()
         plt.close(fig)
 
+    else:
+        first_bird = None
+        first_bird_time = None
+
     return render_template('daily.html', 
                                   chart_url=chart_url, 
                                   version=APP_VERSION,
@@ -1743,7 +1751,9 @@ def daily_stats():
                                   prev_date=prev_date,
                                   next_date=next_date,
                                   is_today=is_today,
-                                  total_birds_day=total_birds_day)
+                                  total_birds_day=total_birds_day,
+                                  first_bird=first_bird,
+                                  first_bird_time=first_bird_time)
 
 def run_flask():
     print(f"Starte Waitress Server auf Port {FLASK_PORT}...")
