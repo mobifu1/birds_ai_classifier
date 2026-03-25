@@ -16,6 +16,7 @@ class BirdAppController:
         self.monitor = FolderMonitor(
             update_log_callback=self.update_log, 
             get_threshold_callback=lambda: self.settings.get("threshold", 70),
+            get_guess_threshold_callback=lambda: self.settings.get("guess_threshold", 40),
             update_size_callback=self.update_size_display,
             get_rename_callback=lambda: self.settings.get("rename_active", True),
             get_delete_callback=lambda: self.settings.get("delete_active", True),

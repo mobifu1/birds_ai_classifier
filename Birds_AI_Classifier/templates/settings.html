@@ -64,8 +64,12 @@
                 </div>
 
                 <div class="row">
-                    <label>Mindest-Wahrscheinlichkeit (Threshold %):</label>
+                    <label>Mindest-Wahrscheinlichkeit Konfidenz (Threshold %):</label>
                     <input type="number" id="threshold" value="{{ s.get('threshold', 70) }}" min="0" max="100">
+                </div>
+                <div class="row">
+                    <label>Mindest-Wahrscheinlichkeit Vermutung (Guess Threshold %):</label>
+                    <input type="number" id="guess_threshold" value="{{ s.get('guess_threshold', 40) }}" min="0" max="100">
                 </div>
 
                 <div style="margin-top: 20px;">
@@ -161,6 +165,7 @@
                     recursive: document.getElementById('recursive').checked,
                     camera_ip: document.getElementById('camera_ip').value,
                     threshold: parseInt(document.getElementById('threshold').value),
+                    guess_threshold: parseInt(document.getElementById('guess_threshold').value),
                     rename_active: document.getElementById('rename_active').checked,
                     ping_active: document.getElementById('ping_active').checked,
                     count_algo_active: document.getElementById('count_algo_active').checked,

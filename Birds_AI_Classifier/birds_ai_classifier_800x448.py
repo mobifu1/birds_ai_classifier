@@ -320,7 +320,7 @@ class BirdAI:
 
 # --- HINTERGRUND ÜBERWACHUNG ---
 class FolderMonitor:
-    def __init__(self, update_log_callback, get_threshold_callback, update_size_callback, 
+    def __init__(self, update_log_callback, get_threshold_callback, get_guess_threshold_callback, update_size_callback, 
                  get_delete_callback, 
                  get_greylist_active_callback, get_greylist_callback,
                  get_backlog_active_callback, get_backlog_callback,
@@ -332,6 +332,7 @@ class FolderMonitor:
         self.ai = None
         self.log_callback = update_log_callback
         self.get_threshold = get_threshold_callback
+        self.get_guess_threshold = get_guess_threshold_callback
         self.update_size_callback = update_size_callback
         self.get_delete_enabled = get_delete_callback
         self.get_greylist_active = get_greylist_active_callback
@@ -444,6 +445,7 @@ class FolderMonitor:
         if len(new_files) > 0:
             files_to_process = sorted(new_files, key=lambda f: get_original_date(str(f)))
             current_threshold = self.get_threshold() 
+            current_guess_threshold = self.get_guess_threshold()
             delete_unsure_active = self.get_delete_enabled() 
             greylist_active = self.get_greylist_active()
             current_greylist = self.get_greylist()
@@ -514,8 +516,10 @@ class FolderMonitor:
                 timestamp = get_original_date(str(file_path))
                 
                 # 1. Classification (Unbekannt oder Klasse)
-                if conf_percent < current_threshold:
+                if conf_percent < current_guess_threshold:
                     species = "Unbekannt"
+                elif conf_percent < current_threshold:
+                    species = "Vermutung"
                 else:
                     species = species.replace(" ", "_")
                 
@@ -1803,6 +1807,7 @@ class BirdAppController:
         self.monitor = FolderMonitor(
             update_log_callback=self.update_log, 
             get_threshold_callback=lambda: self.settings.get("threshold", 70),
+            get_guess_threshold_callback=lambda: self.settings.get("guess_threshold", 40),
             update_size_callback=self.update_size_display,
             get_delete_callback=lambda: self.settings.get("delete_active", True),
             get_greylist_active_callback=lambda: self.settings.get("greylist_active", True), 
@@ -2054,8 +2059,13 @@ def settings_page():
                     </div>
                     
                     <div class="row">
-                        <label>Mindest-Wahrscheinlichkeit (Threshold %):</label>
+                        <label>Mindest-Wahrscheinlichkeit Konfidenz (Threshold %):</label>
                         <input type="number" id="threshold" value="{s.get('threshold', 70)}" min="0" max="100">
+                    </div>
+                    
+                    <div class="row">
+                        <label>Mindest-Wahrscheinlichkeit Vermutung (Guess Threshold %):</label>
+                        <input type="number" id="guess_threshold" value="{s.get('guess_threshold', 40)}" min="0" max="100">
                     </div>
                     
                     <div style="margin-top: 20px;">
@@ -2140,6 +2150,7 @@ def settings_page():
                         recursive: document.getElementById('recursive').checked,
                         camera_ip: document.getElementById('camera_ip').value,
                         threshold: parseInt(document.getElementById('threshold').value),
+                        guess_threshold: parseInt(document.getElementById('guess_threshold').value),
                         ping_active: document.getElementById('ping_active').checked,
                         count_algo_active: document.getElementById('count_algo_active').checked,
                         backlog_active: document.getElementById('backlog_active').checked,
