@@ -173,7 +173,12 @@
             </tbody>
             <tfoot>
                 <tr style="background-color:#0d47a1; font-weight:bold;">
-                    <td>GESAMT</td>
+                    <td>
+                        <div class="flex-center">
+                            <div title="Anzahl unterschiedlicher Arten" style="width:24px; height:24px; background:rgba(255,255,255,0.2); border-radius:50%; text-align:center; line-height:24px; font-size:12px; color:#fff;">{{ unique_species_count }}</div>
+                            <span>GESAMT</span>
+                        </div>
+                    </td>
                     <td style="text-align: right;">{{ today_total }}</td>
                     <td style="text-align: right;">{{ total_count }}</td>
                 </tr>

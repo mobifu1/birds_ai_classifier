@@ -1111,7 +1111,7 @@ def analyze_best_observation_time(df):
         "<thead><tr>"
         "<th style='text-align:left; padding:5px 8px; color:#aaa; font-weight:600; border-bottom:1px solid #333;'>Art</th>"
         "<th style='text-align:center; padding:5px 8px; color:#aaa; font-weight:600; border-bottom:1px solid #333;'>Beste Zeit</th>"
-        "<th style='text-align:left; padding:5px 8px; color:#aaa; font-weight:600; border-bottom:1px solid #333; min-width:80px;'>Aktivität</th>"
+        "<th style='text-align:left; padding:5px 8px; color:#aaa; font-weight:600; border-bottom:1px solid #333; min-width:80px;'>Konzentration</th>"
         "<th style='text-align:right; padding:5px 8px; color:#aaa; font-weight:600; border-bottom:1px solid #333;'>Ges.</th>"
         "</tr></thead><tbody>"
     )
@@ -1540,7 +1540,8 @@ def dashboard():
                                   visitors_per_hour=visitors_per_hour,
                                   minutes_passed=minutes_passed,
                                   record_visitors_today=record_visitors_today,
-                                  record_visitors_per_hour=record_visitors_per_hour)
+                                  record_visitors_per_hour=record_visitors_per_hour,
+                                  unique_species_count=len(df))
 
 @app.route('/weekly')
 def weekly_stats():
