@@ -135,12 +135,46 @@
         </div>
         {% endif %}
 
-        {% if chart_url %}
+        {% if chart_url_gesamt %}
         <div style="margin:20px 0;">
         </div>
-        <h2>Verteilung der Arten</h2>
-        <img src="data:image/png;base64,{{ chart_url }}" alt="Diagramm"
-            style="max-width:100%; height:auto; border-radius:8px;">
+        
+        <h2 style="text-align: center; margin-bottom: 20px;">Verteilung der Arten</h2>
+        
+        <img id="chart-img-heute" src="data:image/png;base64,{{ chart_url_heute }}" alt="Diagramm Heute"
+            style="max-width:100%; height:auto; border-radius:8px; display: block; margin: 0 auto;">
+        <img id="chart-img-gesamt" src="data:image/png;base64,{{ chart_url_gesamt }}" alt="Diagramm Gesamt"
+            style="max-width:100%; height:auto; border-radius:8px; display: none; margin: 0 auto;">
+
+        <!-- Toolbar für Chart Toggle -->
+        <div style="display: flex; justify-content: center; align-items: center; margin-top: 15px; margin-bottom: 30px; gap: 15px;">
+            <button id="btn-chart-heute" onclick="toggleChart('heute')" class="button-link" style="background:#546e7a; padding: 8px 16px; font-size: 0.95em; cursor: pointer; border: none; min-width: 120px; text-align: center;">Ansicht Heute</button>
+            <button id="btn-chart-gesamt" onclick="toggleChart('gesamt')" class="button-link" style="background:#37474f; padding: 8px 16px; font-size: 0.95em; cursor: pointer; border: none; min-width: 120px; text-align: center;">Ansicht Gesamt</button>
+        </div>
+
+        <script>
+            function toggleChart(type) {
+                if (type === 'heute') {
+                    document.getElementById('chart-img-heute').style.display = 'block';
+                    document.getElementById('chart-img-gesamt').style.display = 'none';
+                    document.getElementById('btn-chart-heute').style.background = '#00838f';
+                    document.getElementById('btn-chart-heute').style.color = '#fff';
+                    document.getElementById('btn-chart-gesamt').style.background = '#37474f';
+                    document.getElementById('btn-chart-gesamt').style.color = '#ccc';
+                } else {
+                    document.getElementById('chart-img-heute').style.display = 'none';
+                    document.getElementById('chart-img-gesamt').style.display = 'block';
+                    document.getElementById('btn-chart-heute').style.background = '#37474f';
+                    document.getElementById('btn-chart-heute').style.color = '#ccc';
+                    document.getElementById('btn-chart-gesamt').style.background = '#0d47a1';
+                    document.getElementById('btn-chart-gesamt').style.color = '#fff';
+                }
+            }
+            // Aktiviere Heute standardmäßig beim Laden
+            window.addEventListener('DOMContentLoaded', function() {
+                toggleChart('heute');
+            });
+        </script>
 
         <h2>Detaillierte Liste</h2>
         <table>
@@ -175,12 +209,15 @@
                 <tr style="background-color:#0d47a1; font-weight:bold;">
                     <td>
                         <div class="flex-center">
-                            <div title="Anzahl unterschiedlicher Arten" style="width:24px; height:24px; background:rgba(255,255,255,0.2); border-radius:50%; text-align:center; line-height:24px; font-size:12px; color:#fff;">{{ unique_species_count }}</div>
-                            <span>GESAMT</span>
+                            <span title="Anzahl unterschiedlicher Arten" style="background:rgba(255,255,255,0.2); padding: 3px 12px; border-radius: 12px; font-size: 13px; color:#fff; display: inline-block; text-align:center;">{{ unique_species_count }}</span>
                         </div>
                     </td>
-                    <td style="text-align: right;">{{ today_total }}</td>
-                    <td style="text-align: right;">{{ total_count }}</td>
+                    <td style="text-align: right;">
+                        <span title="Summe Heute" style="min-width: 30px; background:rgba(255,255,255,0.2); padding: 3px 12px; border-radius: 12px; font-size: 13px; color:#fff; display: inline-block; text-align:center;">{{ today_total }}</span>
+                    </td>
+                    <td style="text-align: right;">
+                        <span title="Summe Gesamt" style="min-width: 30px; background:rgba(255,255,255,0.2); padding: 3px 12px; border-radius: 12px; font-size: 13px; color:#fff; display: inline-block; text-align:center;">{{ total_count }}</span>
+                    </td>
                 </tr>
             </tfoot>
         </table>

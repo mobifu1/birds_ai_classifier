@@ -1456,11 +1456,12 @@ def dashboard():
             if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
                 icon_map[os.path.splitext(f)[0]] = f"bird_icons/{f}"
 
-    # Chart Generation (IMMER BALKEN)
-    chart_url = ""
+    # Chart Generation (IMMER BALKEN) - HEUTE & GESAMT
+    chart_url_heute = ""
+    chart_url_gesamt = ""
     if not df.empty:
+        # 1. Chart Gesamt
         fig, ax = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e')
-        # Balkendiagramm Logik
         cmap = plt.get_cmap('tab20')
         colors = [('#555555' if sp == 'Unbekannt' else cmap(i % 20)) for i, sp in enumerate(df['species'])]
         ax.bar(df['species'], df['count'], color=colors)
@@ -1469,11 +1470,33 @@ def dashboard():
         ax.set_facecolor('#1e1e1e')
         
         plt.tight_layout()
-        img = io.BytesIO()
-        fig.savefig(img, format='png', facecolor='#1e1e1e')
-        img.seek(0)
-        chart_url = base64.b64encode(img.getvalue()).decode()
+        img_gesamt = io.BytesIO()
+        fig.savefig(img_gesamt, format='png', facecolor='#1e1e1e')
+        img_gesamt.seek(0)
+        chart_url_gesamt = base64.b64encode(img_gesamt.getvalue()).decode()
         plt.close(fig)
+
+        # 2. Chart Heute (sortiert)
+        df_heute = df[df['today_count'] > 0].sort_values(by='today_count', ascending=False)
+        fig2, ax2 = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e')
+        
+        if not df_heute.empty:
+            color_dict = {sp: colors[i] for i, sp in enumerate(df['species'])}
+            colors_heute = [color_dict[sp] for sp in df_heute['species']]
+            ax2.bar(df_heute['species'], df_heute['today_count'], color=colors_heute)
+            ax2.tick_params(axis='x', colors='white', rotation=45)
+        else:
+            ax2.bar(['Keine Daten'], [0], color=['#555555'])
+            ax2.tick_params(axis='x', colors='white')
+            
+        ax2.tick_params(axis='y', colors='white')
+        ax2.set_facecolor('#1e1e1e')
+        plt.tight_layout()
+        img_heute = io.BytesIO()
+        fig2.savefig(img_heute, format='png', facecolor='#1e1e1e')
+        img_heute.seek(0)
+        chart_url_heute = base64.b64encode(img_heute.getvalue()).decode()
+        plt.close(fig2)
 
     timestamp_now = int(time.time())
     
@@ -1522,7 +1545,8 @@ def dashboard():
         save_records(records)
 
     return render_template('index.html',
-                                  chart_url=chart_url, 
+                                  chart_url_heute=chart_url_heute,
+                                  chart_url_gesamt=chart_url_gesamt, 
                                   df=df, 
                                   icon_map=icon_map, 
                                   total_count=total_count,
