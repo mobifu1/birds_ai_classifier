@@ -1,0 +1,8 @@
+Ich habe dir das gewünschte Skript unter dem Namen in deinem Trainings-Ordner erstellt.
+
+Was das Skript macht:
+
+Es sucht automatisch nach deinem Bilder-Ordner (birds_training_dataset).
+Es durchkämmt alle Unterordner nach gängigen Bildformaten (png, jpg, gif etc.).
+Wenn es ein Bild findet, das noch eine Transparenz oder Farbpalette besitzt, konvertiert es dieses sauber in das pure RGB-Format, füllt Transparenzen gegebenenfalls mit einem weißen Hintergrund auf und speichert das bereinigte Bild ab.
+Ich habe auch bereits den Terminalbefehl vorbereitet, um das Skript auszuführen. Du kannst ihn einfach bestätigen (siehe das Terminal-Fenster in deinem Editor), dann werden all deine Trainingsbilder so vorbereitet, dass die Pillow-Warnung beim nächsten Training nicht mehr auftreten sollte!
