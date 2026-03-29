@@ -297,6 +297,118 @@ def api_manual_entry_save():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
+@app.route('/delete_entry')
+def delete_entry_page():
+    known_species = set()
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT DISTINCT species FROM detections")
+        for row in c.fetchall():
+            if row[0] == "IGNORED_LOW_CONFIDENCE":
+                known_species.add("Unbekannt")
+            else:
+                known_species.add(row[0])
+        conn.close()
+    except: pass
+    
+    try:
+        if os.path.exists("species_categories.json"):
+            with open("species_categories.json", "r") as f:
+                import json
+                categories = json.load(f)
+                for sp in categories.keys():
+                    known_species.add(sp)
+    except: pass
+    
+    species_list = sorted(list(known_species))
+    return render_template('delete_entry.html', species_list=species_list)
+
+@app.route('/api/detections/by_date', methods=['GET'])
+def api_detections_by_date():
+    date_str = request.args.get('date')
+    if not date_str:
+        return jsonify({"success": False, "error": "Fehlendes Datum"}), 400
+        
+    try:
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        c = conn.cursor()
+        search_pattern = f"{date_str}%"
+        c.execute("SELECT id, timestamp, species, confidence, filename FROM detections WHERE timestamp LIKE ? ORDER BY timestamp DESC", (search_pattern,))
+        rows = c.fetchall()
+        
+        entries = []
+        for row in rows:
+            time_part = row[1].split(' ')[1] if ' ' in row[1] else row[1]
+            entries.append({
+                "id": row[0],
+                "timestamp": row[1],
+                "time": time_part,
+                "species": row[2],
+                "confidence": round(row[3] * 100, 1) if row[3] else 0.0,
+                "filename": row[4]
+            })
+            
+        conn.close()
+        return jsonify({"success": True, "entries": entries})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/detections/delete/<int:entry_id>', methods=['DELETE'])
+def api_delete_detection(entry_id):
+    try:
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        c = conn.cursor()
+        
+        # Get info before deleting for log
+        c.execute("SELECT species, timestamp FROM detections WHERE id = ?", (entry_id,))
+        row = c.fetchone()
+        
+        if not row:
+            conn.close()
+            return jsonify({"success": False, "error": "Eintrag nicht gefunden"}), 404
+            
+        species, timestamp = row
+        
+        c.execute("DELETE FROM detections WHERE id = ?", (entry_id,))
+        conn.commit()
+        conn.close()
+        
+        app_controller.update_log(f"Fehlerhafter DB-Eintrag gelöscht: {species} am {timestamp}")
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/detections/update/<int:entry_id>', methods=['POST'])
+def api_update_detection(entry_id):
+    data = request.json
+    new_species = data.get('species')
+    if not new_species:
+         return jsonify({"success": False, "error": "Keine Art angegeben"}), 400
+         
+    try:
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        c = conn.cursor()
+        
+        # Get old info for log
+        c.execute("SELECT species, timestamp FROM detections WHERE id = ?", (entry_id,))
+        row = c.fetchone()
+        
+        if not row:
+            conn.close()
+            return jsonify({"success": False, "error": "Eintrag nicht gefunden"}), 404
+            
+        old_species, timestamp = row
+        
+        c.execute("UPDATE detections SET species = ? WHERE id = ?", (new_species, entry_id))
+        conn.commit()
+        conn.close()
+        
+        app_controller.update_log(f"Eintrag korrigiert: '{old_species}' -> '{new_species}' am {timestamp}")
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # Main entry point update
 if __name__ == "__main__":
     init_db()
