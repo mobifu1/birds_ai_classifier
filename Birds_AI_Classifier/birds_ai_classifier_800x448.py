@@ -1371,11 +1371,10 @@ def dashboard():
         """
         df = pd.read_sql_query(query, conn)
         cursor = conn.cursor()
-        cursor.execute("SELECT species, filename, timestamp, confidence FROM detections ORDER BY id DESC LIMIT 1")
+        cursor.execute("SELECT species, filename, timestamp, confidence FROM detections WHERE species != 'IGNORED_LOW_CONFIDENCE' ORDER BY id DESC LIMIT 1")
         row = cursor.fetchone()
         if row:
             last_entry = { 'species': row[0], 'filename': row[1], 'timestamp': row[2], 'confidence': int(row[3] * 100) }
-            if last_entry['species'] == "IGNORED_LOW_CONFIDENCE": last_entry['species'] = "Unbekannt"
 
         if not df.empty:
             df['species'] = df['species'].replace('IGNORED_LOW_CONFIDENCE', 'Unbekannt')
