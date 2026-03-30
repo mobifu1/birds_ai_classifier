@@ -12,6 +12,7 @@ backlog/
 error_images/
 backup_db/
 backup_modells/
+wiki/
 
 # Ignoriere Modell-Files/Database-Files
 *.keras

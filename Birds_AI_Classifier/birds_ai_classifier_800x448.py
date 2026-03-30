@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 # System
 
 # Web & Data
-from flask import Flask, render_template_string, jsonify, request, send_file, url_for, render_template
+from flask import Flask, render_template_string, jsonify, request, send_file, url_for, render_template, send_from_directory
 import pandas as pd
 
 # AI (TensorFlow)
@@ -2274,6 +2274,22 @@ def api_status():
         "ram_mb": ram_mb,
         "logs": app_controller.logs
     })
+
+@app.route('/wiki')
+def wiki_page():
+    wiki_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wiki')
+    images = []
+    if os.path.exists(wiki_folder):
+        images = sorted([
+            f for f in os.listdir(wiki_folder)
+            if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp'))
+        ])
+    return render_template('wiki.html', version=APP_VERSION, wiki_images=images)
+
+@app.route('/wiki/images/<path:filename>')
+def wiki_image(filename):
+    wiki_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wiki')
+    return send_from_directory(wiki_folder, filename)
 
 @app.route('/manual_entry')
 def manual_entry_page():

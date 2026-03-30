@@ -1,5 +1,5 @@
 # --- NEU: Flask Request/Jsonify imports ---
-from flask import Flask, render_template_string, request, url_for, jsonify, render_template
+from flask import Flask, render_template_string, request, url_for, jsonify, render_template, send_from_directory
 # 1. Controller definieren
 class BirdAppController:
     def __init__(self):
@@ -178,6 +178,22 @@ def settings_page():
     db_species_str = ", ".join(sorted(list(known_species)))
 
     return render_template('settings.html', s=s, db_species_str=db_species_str, app_controller=app_controller)
+
+@app.route('/wiki')
+def wiki_page():
+    wiki_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wiki')
+    images = []
+    if os.path.exists(wiki_folder):
+        images = sorted([
+            f for f in os.listdir(wiki_folder)
+            if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp'))
+        ])
+    return render_template('wiki.html', version=APP_VERSION, wiki_images=images)
+
+@app.route('/wiki/images/<path:filename>')
+def wiki_image(filename):
+    wiki_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wiki')
+    return send_from_directory(wiki_folder, filename)
 
 @app.route('/api/control/start', methods=['POST'])
 def api_start():
