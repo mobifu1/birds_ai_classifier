@@ -52,6 +52,15 @@ def merge_db_files():
                 cursor.execute("INSERT INTO temp_merge (filename, species, timestamp, confidence) VALUES (?, ?, ?, ?)",
                                (filename, species, timestamp, confidence))
             except sqlite3.IntegrityError:
+                # Check if it's an exact duplicate
+                cursor.execute("SELECT species, timestamp FROM temp_merge WHERE filename = ?", (filename,))
+                existing_row = cursor.fetchone()
+                
+                if existing_row and existing_row[0] == species and existing_row[1] == timestamp:
+                    # It's a duplicate entry, skip inserting it again
+                    continue
+                
+                # Collision: different entry with the same filename. Rename to preserve both.
                 name_part, ext = os.path.splitext(filename)
                 inserted = False
                 while not inserted:
