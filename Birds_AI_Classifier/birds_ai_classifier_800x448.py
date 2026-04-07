@@ -615,24 +615,31 @@ class FolderMonitor:
 
                 # --- NEU: Webhook Action Trigger ---
                 current_actionlist = self.get_actionlist_callback()
-                if self.get_webhook_active() and species in current_actionlist and not self.action_active:
-                    try:
-                        img_time = time.mktime(datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S").timetuple())
-                        age_seconds = time.time() - img_time
-                        if age_seconds <= 60:
-                            current_action_config = self.get_action_config_callback()
-                            start_webhook = current_action_config.get("start_webhook", "")
-                            stop_webhook = current_action_config.get("stop_webhook", "")
-                            try:
-                                duration = int(current_action_config.get("duration", 10))
-                            except ValueError:
-                                duration = 10
-                            
-                            self.action_active = True
-                            threading.Thread(target=self.trigger_webhook_action, args=(start_webhook, stop_webhook, duration), daemon=True).start()
-                            self.log_callback(f"[{final_filename}] 🚨 {species} erkannt! Aktion gestartet (Laufzeit: {duration}s).")
-                    except Exception as e:
-                        self.log_callback(f"[{final_filename}] ⚠️ Fehler bei Altersberechnung für Webhook: {e}")
+                if species in current_actionlist:
+                    if not self.get_webhook_active():
+                        self.log_callback(f"[{final_filename}] ⏭️ Webhook deaktiviert in UI.")
+                    elif self.action_active:
+                        self.log_callback(f"[{final_filename}] ⏭️ Webhook übersprungen: Aktion läuft bereits.")
+                    else:
+                        try:
+                            img_time = time.mktime(datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S").timetuple())
+                            age_seconds = time.time() - img_time
+                            if age_seconds <= 60:
+                                current_action_config = self.get_action_config_callback()
+                                start_webhook = current_action_config.get("start_webhook", "")
+                                stop_webhook = current_action_config.get("stop_webhook", "")
+                                try:
+                                    duration = int(current_action_config.get("duration", 10))
+                                except ValueError:
+                                    duration = 10
+                                
+                                self.action_active = True
+                                threading.Thread(target=self.trigger_webhook_action, args=(start_webhook, stop_webhook, duration), daemon=True).start()
+                                self.log_callback(f"[{final_filename}] 🚨 {species} erkannt! Aktion gestartet (Laufzeit: {duration}s).")
+                            else:
+                                self.log_callback(f"[{final_filename}] ⏭️ Webhook übersprungen: Bild ist {int(age_seconds)}s alt (max 60s).")
+                        except Exception as e:
+                            self.log_callback(f"[{final_filename}] ⚠️ Fehler bei Altersberechnung für Webhook: {e}")
 
                 # 3. Count Algorithm (Algorithmus)
                 algo_active = self.get_algo_active()
