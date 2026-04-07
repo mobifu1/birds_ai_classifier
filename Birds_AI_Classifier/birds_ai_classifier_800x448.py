@@ -40,8 +40,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 
 # InceptionV3 Importe
-from tensorflow.keras.applications.inception_v3 import InceptionV3, preprocess_input, decode_predictions
-from tensorflow.keras.preprocessing import image as tf_image
+from tensorflow.keras.applications.inception_v3 import InceptionV3, preprocess_input, decode_predictions # type: ignore
+from tensorflow.keras.preprocessing import image as tf_image # type: ignore
 from tensorflow.keras.models import load_model 
 import numpy as np
 
@@ -60,6 +60,10 @@ FLASK_PORT = 5000
 CHECK_INTERVAL_SECONDS = 5 
 STATIC_FOLDER = "static" 
 LAST_IMG_NAME = "last_detection.jpg" 
+
+# Globals for weather caching
+last_weather_check = 0
+last_weather_temp = None
 
 # --- MASK PARAMETER ---
 MASK_TOP = 0  
@@ -1506,9 +1510,6 @@ def dashboard():
     current_temp = None
     try:
         global last_weather_check, last_weather_temp
-        if 'last_weather_check' not in globals():
-            last_weather_check = 0
-            last_weather_temp = None
         
         if time.time() - last_weather_check > 300: # 5 Minuten Cache
             w_config = load_weather_config()
