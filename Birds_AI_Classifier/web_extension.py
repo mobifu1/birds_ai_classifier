@@ -6,6 +6,8 @@ class BirdAppController:
         self.greylist = load_greylist()
         self.backlog = load_backlog()
         self.blacklist = load_blacklist()
+        self.actionlist = load_actionlist()
+        self.action_config = load_action_config()
         self.settings = load_settings()
         
         self.current_size_mb = 0.0
@@ -27,7 +29,9 @@ class BirdAppController:
             get_blacklist_callback=lambda: self.blacklist,
             update_duration_callback=self.update_duration_display,
             update_remaining_callback=self.update_remaining_display,
-            get_algo_active_callback=lambda: self.settings.get("count_algo_active", True)
+            get_algo_active_callback=lambda: self.settings.get("count_algo_active", True),
+            get_actionlist_callback=lambda: getattr(self, 'actionlist', set()),
+            get_action_config_callback=lambda: getattr(self, 'action_config', {})
         )
         self.schedule_ping()
 
@@ -239,6 +243,14 @@ def api_settings_save():
     if 'blacklist' in lists:
         app_controller.blacklist = set(lists['blacklist'])
         save_blacklist(app_controller.blacklist)
+    if 'actionlist' in lists:
+        app_controller.actionlist = set(lists['actionlist'])
+        save_actionlist(app_controller.actionlist)
+        
+    action_config = data.get('action_config')
+    if action_config:
+        app_controller.action_config = action_config
+        save_action_config(action_config)
 
     return jsonify({"msg": "Einstellungen und Listen erfolgreich gespeichert!"})
 

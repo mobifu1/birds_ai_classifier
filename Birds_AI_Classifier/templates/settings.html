@@ -87,7 +87,35 @@
             </div>
 
             <div class="section">
+                <h2>Aktions-Einstellungen (Webhook)</h2>
+                <div class="row">
+                    <label>Start-Webhook URL (GET):</label>
+                    <input type="text" id="action_start_webhook" value="{{ app_controller.action_config.get('start_webhook', '') }}" placeholder="http://tasmota-ip/cm?cmnd=Power%20On" style="width:100%; max-width:400px;">
+                </div>
+                <div class="row">
+                    <label>Stop-Webhook URL (GET):</label>
+                    <input type="text" id="action_stop_webhook" value="{{ app_controller.action_config.get('stop_webhook', '') }}" placeholder="http://tasmota-ip/cm?cmnd=Power%20Off" style="width:100%; max-width:400px;">
+                </div>
+                <div class="row">
+                    <label>Laufzeit in Sekunden:</label>
+                    <input type="number" id="action_duration" value="{{ app_controller.action_config.get('duration', 10) }}" min="1" max="3600" style="max-width:100px;">
+                </div>
+                <div class="row" style="gap:10px; margin-top:10px;">
+                    <button type="button" class="btn btn-orange" onclick="testWebhookStart()">Test Start-Webhook</button>
+                    <button type="button" class="btn btn-red" onclick="testWebhookStop()">Test Stop-Webhook</button>
+                </div>
+            </div>
+
+            <div class="section">
                 <h2>Listen Konfiguration (Filter)</h2>
+
+                <div class="row" style="justify-content: flex-start;">
+                    <label style="color:#009688; font-weight:bold;">Aktions-Liste: Bei diesen Arten wird die oben definierte Webhook-Aktion ausgeführt (max 60 Sekunden alte Bilder)</label>
+                </div>
+                <label>Aktions-Arten (kommagetrennt):</label>
+                <textarea class="list-editor" id="actionlist">{{ ','.join(app_controller.actionlist) }}</textarea>
+
+                <hr style="border-color: #444; margin:20px 0;">
 
                 <div class="row" style="justify-content: flex-start;">
                     <input type="checkbox" id="backlog_active" {% if s.get('backlog_active', True) %}checked{% endif %}>
@@ -159,6 +187,18 @@
             fetch('/api/control/dbbackup', { method: 'POST' }).then(r => r.json()).then(d => alert(d.msg));
         }
 
+        function testWebhookStart() {
+            fetch('/api/control/test_webhook_start', { method: 'POST' }).then(r => r.json()).then(d => {
+                if(d.error) alert(d.error); else alert(d.msg);
+            });
+        }
+
+        function testWebhookStop() {
+            fetch('/api/control/test_webhook_stop', { method: 'POST' }).then(r => r.json()).then(d => {
+                if(d.error) alert(d.error); else alert(d.msg);
+            });
+        }
+
         function saveSettings() {
             const data = {
                 settings: {
@@ -177,7 +217,13 @@
                 lists: {
                     backlog: document.getElementById('backlog').value.split(',').map(s => s.trim()).filter(s => s),
                     greylist: document.getElementById('greylist').value.split(',').map(s => s.trim()).filter(s => s),
-                    blacklist: document.getElementById('blacklist').value.split(',').map(s => s.trim()).filter(s => s)
+                    blacklist: document.getElementById('blacklist').value.split(',').map(s => s.trim()).filter(s => s),
+                    actionlist: document.getElementById('actionlist').value.split(',').map(s => s.trim()).filter(s => s)
+                },
+                action_config: {
+                    start_webhook: document.getElementById('action_start_webhook').value.trim(),
+                    stop_webhook: document.getElementById('action_stop_webhook').value.trim(),
+                    duration: parseInt(document.getElementById('action_duration').value) || 10
                 }
             };
 

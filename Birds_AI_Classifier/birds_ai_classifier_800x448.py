@@ -54,6 +54,8 @@ WEATHER_CONFIG_FILE = "weather_config.json"
 GREYLIST_FILE = "greylist.json" 
 BLACKLIST_FILE = "blacklist.json" 
 BACKLOG_FILE = "backlog.json"
+ACTIONLIST_FILE = "actionlist.json"
+ACTION_CONFIG_FILE = "action_config.json"
 SETTINGS_FILE = "settings.json" 
 RECORDS_FILE = "records.json"
 FLASK_PORT = 5000
@@ -204,6 +206,38 @@ def save_backlog(backlog_set):
             json.dump(list(backlog_set), f, ensure_ascii=False, indent=2)
     except: pass
 
+def load_actionlist():
+    if os.path.exists(ACTIONLIST_FILE):
+        try:
+            with open(ACTIONLIST_FILE, 'r', encoding='utf-8') as f:
+                return set(json.load(f))
+        except:
+            return set()
+    return set()
+
+def save_actionlist(actionlist_set):
+    try:
+        with open(ACTIONLIST_FILE, 'w', encoding='utf-8') as f:
+            json.dump(list(actionlist_set), f, ensure_ascii=False, indent=2)
+    except: pass
+
+def load_action_config():
+    defaults = {"start_webhook": "", "stop_webhook": "", "duration": 10}
+    if os.path.exists(ACTION_CONFIG_FILE):
+        try:
+            with open(ACTION_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                return {**defaults, **config}
+        except:
+            return defaults
+    return defaults
+
+def save_action_config(config):
+    try:
+        with open(ACTION_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+    except: pass
+
 def load_categories():
     cat_file = "species_categories.json"
     if os.path.exists(cat_file):
@@ -329,7 +363,9 @@ class FolderMonitor:
                  get_greylist_active_callback, get_greylist_callback,
                  get_backlog_active_callback, get_backlog_callback,
                  get_blacklist_callback, update_duration_callback=None,
-                 update_remaining_callback=None, get_algo_active_callback=None): 
+                 update_remaining_callback=None, get_algo_active_callback=None,
+                 get_webhook_active_callback=None,
+                 get_actionlist_callback=None, get_action_config_callback=None): 
         self.running = False
         self.folder_path = ""
         self.recursive = False 
@@ -345,12 +381,33 @@ class FolderMonitor:
         self.get_backlog_callback = get_backlog_callback
         self.get_blacklist = get_blacklist_callback
         self.get_algo_active = get_algo_active_callback if get_algo_active_callback else lambda: False
+        self.get_webhook_active = get_webhook_active_callback if get_webhook_active_callback else lambda: True
+        self.get_actionlist_callback = get_actionlist_callback if get_actionlist_callback else lambda: set()
+        self.get_action_config_callback = get_action_config_callback if get_action_config_callback else lambda: {}
         self.update_duration_callback = update_duration_callback
         self.update_remaining_callback = update_remaining_callback
         self.thread = None
         self.normal_timers = {}
         self.lazy_occupier = None
         self.categories = load_categories()
+        self.action_active = False
+
+    def trigger_webhook_action(self, start_url, stop_url, duration):
+        try:
+            if start_url:
+                self.log_callback(f"🚀 Starte Webhook Aktion: {start_url}")
+                try: requests.get(start_url, timeout=5)
+                except Exception as e: self.log_callback(f"⚠️ Fehler bei Start-Webhook: {e}")
+            
+            if duration > 0:
+                time.sleep(duration)
+                
+            if stop_url:
+                self.log_callback(f"🛑 Stoppe Webhook Aktion: {stop_url}")
+                try: requests.get(stop_url, timeout=5)
+                except Exception as e: self.log_callback(f"⚠️ Fehler bei Stop-Webhook: {e}")
+        finally:
+            self.action_active = False
 
     def start(self, folder_path, recursive=False): 
         if not folder_path: return
@@ -556,6 +613,27 @@ class FolderMonitor:
                     self.log_callback(f"[{file_path.name}] ❌ Fehler beim Umbenennen: {e}")
                     final_filename = file_path.name
 
+                # --- NEU: Webhook Action Trigger ---
+                current_actionlist = self.get_actionlist_callback()
+                if self.get_webhook_active() and species in current_actionlist and not self.action_active:
+                    try:
+                        img_time = time.mktime(datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S").timetuple())
+                        age_seconds = time.time() - img_time
+                        if age_seconds <= 60:
+                            current_action_config = self.get_action_config_callback()
+                            start_webhook = current_action_config.get("start_webhook", "")
+                            stop_webhook = current_action_config.get("stop_webhook", "")
+                            try:
+                                duration = int(current_action_config.get("duration", 10))
+                            except ValueError:
+                                duration = 10
+                            
+                            self.action_active = True
+                            threading.Thread(target=self.trigger_webhook_action, args=(start_webhook, stop_webhook, duration), daemon=True).start()
+                            self.log_callback(f"[{final_filename}] 🚨 {species} erkannt! Aktion gestartet (Laufzeit: {duration}s).")
+                    except Exception as e:
+                        self.log_callback(f"[{final_filename}] ⚠️ Fehler bei Altersberechnung für Webhook: {e}")
+
                 # 3. Count Algorithm (Algorithmus)
                 algo_active = self.get_algo_active()
                 if algo_active and conf_percent >= current_threshold and species != "Unbekannt":
@@ -681,7 +759,7 @@ class FolderMonitor:
         conn.close()
 
 # --- NEU: VERSION ---
-APP_VERSION = "Version 1.1-RC"
+APP_VERSION = "Version 1.2-RC"
 
 # --- WEB SERVER (FLASK) ---
 app = Flask(__name__)
@@ -1797,6 +1875,8 @@ class BirdAppController:
         self.greylist = load_greylist()
         self.backlog = load_backlog()
         self.blacklist = load_blacklist()
+        self.actionlist = load_actionlist()
+        self.action_config = load_action_config()
         self.settings = load_settings()
         
         self.current_size_mb = 0.0
@@ -1817,7 +1897,10 @@ class BirdAppController:
             get_blacklist_callback=lambda: self.blacklist,
             update_duration_callback=self.update_duration_display,
             update_remaining_callback=self.update_remaining_display,
-            get_algo_active_callback=lambda: self.settings.get("count_algo_active", True)
+            get_algo_active_callback=lambda: self.settings.get("count_algo_active", True),
+            get_webhook_active_callback=lambda: self.settings.get("webhook_active", True),
+            get_actionlist_callback=lambda: getattr(self, 'actionlist', set()),
+            get_action_config_callback=lambda: getattr(self, 'action_config', {})
         )
         self.schedule_ping()
 
@@ -2076,7 +2159,36 @@ def settings_page():
                 </div>
 
                 <div class="section">
+                    <h2>Aktions-Einstellungen (Webhook)</h2>
+                    <div class="row">
+                        <label>Start-Webhook URL (GET):</label>
+                        <input type="text" id="action_start_webhook" value="{app_controller.action_config.get('start_webhook', '')}" placeholder="http://tasmota-ip/cm?cmnd=Power%20On" style="width:100%; max-width:400px;">
+                    </div>
+                    <div class="row">
+                        <label>Stop-Webhook URL (GET):</label>
+                        <input type="text" id="action_stop_webhook" value="{app_controller.action_config.get('stop_webhook', '')}" placeholder="http://tasmota-ip/cm?cmnd=Power%20Off" style="width:100%; max-width:400px;">
+                    </div>
+                    <div class="row">
+                        <label>Laufzeit in Sekunden:</label>
+                        <input type="number" id="action_duration" value="{app_controller.action_config.get('duration', 10)}" min="1" max="3600" style="max-width:100px;">
+                    </div>
+                    <div class="row" style="gap:10px; margin-top:10px;">
+                        <button type="button" class="btn btn-orange" onclick="testWebhookStart()">Test Start-Webhook</button>
+                        <button type="button" class="btn btn-red" onclick="testWebhookStop()">Test Stop-Webhook</button>
+                    </div>
+                </div>
+
+                <div class="section">
                     <h2>Listen Konfiguration (Filter)</h2>
+                    
+                    <div class="row" style="justify-content: flex-start;">
+                        <input type="checkbox" id="webhook_active" {'checked' if s.get('webhook_active', True) else ''}>
+                        <label style="color:#009688; font-weight:bold;">Aktions-Trigger aktiv: Bei diesen Arten wird die oben konfigurierte Aktion ausgelöst (max 60 Sekunden alte Bilder)</label>
+                    </div>
+                    <label>Aktions-Arten (kommagetrennt):</label>
+                    <textarea class="list-editor" id="actionlist">{','.join(app_controller.actionlist)}</textarea>
+
+                    <hr style="border-color: #444; margin:20px 0;">
                     
                     <div class="row" style="justify-content: flex-start;">
                         <input type="checkbox" id="backlog_active" {'checked' if s.get('backlog_active', True) else ''}>
@@ -2144,6 +2256,18 @@ def settings_page():
                 fetch('/api/control/dbbackup', {{ method: 'POST' }}).then(r=>r.json()).then(d=>alert(d.msg));
             }}
 
+            function testWebhookStart() {{
+                fetch('/api/control/test_webhook_start', {{ method: 'POST' }}).then(r => r.json()).then(d => {{
+                    if(d.error) alert(d.error); else alert(d.msg);
+                }});
+            }}
+
+            function testWebhookStop() {{
+                fetch('/api/control/test_webhook_stop', {{ method: 'POST' }}).then(r => r.json()).then(d => {{
+                    if(d.error) alert(d.error); else alert(d.msg);
+                }});
+            }}
+
             function saveSettings() {{
                 const data = {{
                     settings: {{
@@ -2154,6 +2278,7 @@ def settings_page():
                         guess_threshold: parseInt(document.getElementById('guess_threshold').value),
                         ping_active: document.getElementById('ping_active').checked,
                         count_algo_active: document.getElementById('count_algo_active').checked,
+                        webhook_active: document.getElementById('webhook_active').checked,
                         backlog_active: document.getElementById('backlog_active').checked,
                         greylist_active: document.getElementById('greylist_active').checked,
                         delete_active: document.getElementById('delete_active').checked
@@ -2161,7 +2286,13 @@ def settings_page():
                     lists: {{
                         backlog: document.getElementById('backlog').value.split(',').map(s => s.trim()).filter(s => s),
                         greylist: document.getElementById('greylist').value.split(',').map(s => s.trim()).filter(s => s),
-                        blacklist: document.getElementById('blacklist').value.split(',').map(s => s.trim()).filter(s => s)
+                        blacklist: document.getElementById('blacklist').value.split(',').map(s => s.trim()).filter(s => s),
+                        actionlist: document.getElementById('actionlist').value.split(',').map(s => s.trim()).filter(s => s)
+                    }},
+                    action_config: {{
+                        start_webhook: document.getElementById('action_start_webhook').value.trim(),
+                        stop_webhook: document.getElementById('action_stop_webhook').value.trim(),
+                        duration: parseInt(document.getElementById('action_duration').value) || 10
                     }}
                 }};
                 
@@ -2255,8 +2386,36 @@ def api_settings_save():
     if 'blacklist' in lists:
         app_controller.blacklist = set(lists['blacklist'])
         save_blacklist(app_controller.blacklist)
+    if 'actionlist' in lists:
+        app_controller.actionlist = set(lists['actionlist'])
+        save_actionlist(app_controller.actionlist)
+        
+    action_config = data.get('action_config')
+    if action_config is not None:
+        app_controller.action_config = action_config
+        save_action_config(action_config)
 
     return jsonify({"msg": "Einstellungen und Listen erfolgreich gespeichert!"})
+
+@app.route('/api/control/test_webhook_start', methods=['POST'])
+def api_test_webhook_start():
+    url = app_controller.action_config.get("start_webhook", "")
+    if not url: return jsonify({"error": "Keine Start-URL konfiguriert."})
+    try:
+        requests.get(url, timeout=5)
+        return jsonify({"msg": f"Start-Webhook an {url} gesendet."})
+    except Exception as e:
+        return jsonify({"error": f"Fehler beim Senden: {e}"})
+
+@app.route('/api/control/test_webhook_stop', methods=['POST'])
+def api_test_webhook_stop():
+    url = app_controller.action_config.get("stop_webhook", "")
+    if not url: return jsonify({"error": "Keine Stop-URL konfiguriert."})
+    try:
+        requests.get(url, timeout=5)
+        return jsonify({"msg": f"Stop-Webhook an {url} gesendet."})
+    except Exception as e:
+        return jsonify({"error": f"Fehler beim Senden: {e}"})
 
 @app.route('/api/status', methods=['GET'])
 def api_status():

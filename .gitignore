@@ -21,3 +21,4 @@ wiki/
 *.db
 debug_log.txt
 weather_config.json
+action_config.json
