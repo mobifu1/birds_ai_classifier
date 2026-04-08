@@ -624,7 +624,7 @@ class FolderMonitor:
                         try:
                             img_time = time.mktime(datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S").timetuple())
                             age_seconds = time.time() - img_time
-                            if age_seconds <= 60:
+                            if age_seconds <= 120:
                                 current_action_config = self.get_action_config_callback()
                                 start_webhook = current_action_config.get("start_webhook", "")
                                 stop_webhook = current_action_config.get("stop_webhook", "")
