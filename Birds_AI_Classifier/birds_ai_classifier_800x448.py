@@ -2195,7 +2195,7 @@ def settings_page():
                     
                     <div class="row" style="justify-content: flex-start;">
                         <input type="checkbox" id="webhook_active" {'checked' if s.get('webhook_active', True) else ''}>
-                        <label style="color:#009688; font-weight:bold;">Aktions-Trigger aktiv: Bei diesen Arten wird die oben konfigurierte Aktion ausgelöst (max 60 Sekunden alte Bilder)</label>
+                        <label style="color:#009688; font-weight:bold;">Aktions-Trigger aktiv: Bei diesen Arten wird die oben konfigurierte Aktion ausgelöst</label>
                     </div>
                     <label>Aktions-Arten (kommagetrennt):</label>
                     <textarea class="list-editor" id="actionlist">{','.join(app_controller.actionlist)}</textarea>
