@@ -100,6 +100,10 @@
                     <label>Laufzeit in Sekunden:</label>
                     <input type="number" id="action_duration" value="{{ app_controller.action_config.get('duration', 10) }}" min="1" max="3600" style="max-width:100px;">
                 </div>
+                <div class="row">
+                    <label>Max. Bildalter in Sekunden:</label>
+                    <input type="number" id="action_max_age" value="{{ app_controller.action_config.get('max_age', 120) }}" min="1" max="3600" style="max-width:100px;">
+                </div>
                 <div class="row" style="gap:10px; margin-top:10px;">
                     <button type="button" class="btn btn-orange" onclick="testWebhookStart()">Test Start-Webhook</button>
                     <button type="button" class="btn btn-red" onclick="testWebhookStop()">Test Stop-Webhook</button>
@@ -223,7 +227,8 @@
                 action_config: {
                     start_webhook: document.getElementById('action_start_webhook').value.trim(),
                     stop_webhook: document.getElementById('action_stop_webhook').value.trim(),
-                    duration: parseInt(document.getElementById('action_duration').value) || 10
+                    duration: parseInt(document.getElementById('action_duration').value) || 10,
+                    max_age: parseInt(document.getElementById('action_max_age').value) || 120
                 }
             };
 

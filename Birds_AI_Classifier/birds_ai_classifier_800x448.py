@@ -222,7 +222,7 @@ def save_actionlist(actionlist_set):
     except: pass
 
 def load_action_config():
-    defaults = {"start_webhook": "", "stop_webhook": "", "duration": 10}
+    defaults = {"start_webhook": "", "stop_webhook": "", "duration": 10, "max_age": 120}
     if os.path.exists(ACTION_CONFIG_FILE):
         try:
             with open(ACTION_CONFIG_FILE, 'r', encoding='utf-8') as f:
@@ -624,7 +624,8 @@ class FolderMonitor:
                         try:
                             img_time = time.mktime(datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S").timetuple())
                             age_seconds = time.time() - img_time
-                            if age_seconds <= 120:
+                            max_age = int(self.get_action_config_callback().get("max_age", 120))
+                            if age_seconds <= max_age:
                                 current_action_config = self.get_action_config_callback()
                                 start_webhook = current_action_config.get("start_webhook", "")
                                 stop_webhook = current_action_config.get("stop_webhook", "")
@@ -637,7 +638,7 @@ class FolderMonitor:
                                 threading.Thread(target=self.trigger_webhook_action, args=(start_webhook, stop_webhook, duration), daemon=True).start()
                                 self.log_callback(f"[{final_filename}] 🚨 {species} erkannt! Aktion gestartet (Laufzeit: {duration}s).")
                             else:
-                                self.log_callback(f"[{final_filename}] ⏭️ Webhook übersprungen: Bild ist {int(age_seconds)}s alt (max 60s).")
+                                self.log_callback(f"[{final_filename}] ⏭️ Webhook übersprungen: Bild ist {int(age_seconds)}s alt (max {max_age}s).")
                         except Exception as e:
                             self.log_callback(f"[{final_filename}] ⚠️ Fehler bei Altersberechnung für Webhook: {e}")
 
@@ -2179,6 +2180,10 @@ def settings_page():
                         <label>Laufzeit in Sekunden:</label>
                         <input type="number" id="action_duration" value="{app_controller.action_config.get('duration', 10)}" min="1" max="3600" style="max-width:100px;">
                     </div>
+                    <div class="row">
+                        <label>Max. Bildalter in Sekunden:</label>
+                        <input type="number" id="action_max_age" value="{app_controller.action_config.get('max_age', 120)}" min="1" max="3600" style="max-width:100px;">
+                    </div>
                     <div class="row" style="gap:10px; margin-top:10px;">
                         <button type="button" class="btn btn-orange" onclick="testWebhookStart()">Test Start-Webhook</button>
                         <button type="button" class="btn btn-red" onclick="testWebhookStop()">Test Stop-Webhook</button>
@@ -2299,7 +2304,8 @@ def settings_page():
                     action_config: {{
                         start_webhook: document.getElementById('action_start_webhook').value.trim(),
                         stop_webhook: document.getElementById('action_stop_webhook').value.trim(),
-                        duration: parseInt(document.getElementById('action_duration').value) || 10
+                        duration: parseInt(document.getElementById('action_duration').value) || 10,
+                        max_age: parseInt(document.getElementById('action_max_age').value) || 120
                     }}
                 }};
                 
