@@ -80,6 +80,9 @@
                     <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="ping_active" {% if
                             s.get('ping_active', True) %}checked{% endif %}> <label style="color:darkgreen;">Camera:
                             ping aktiv</label></div>
+                    <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="debug_active" {% if
+                            s.get('debug_active', True) %}checked{% endif %}> <label
+                            style="color:orange;">Debug Log</label></div>
                     <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="count_algo_active"
                             {% if s.get('count_algo_active', True) %}checked{% endif %}> <label
                             style="color:purple;">Count Algorithm (Hectic/Normal/Lazy)</label></div>
@@ -213,6 +216,7 @@
                     guess_threshold: parseInt(document.getElementById('guess_threshold').value),
                     rename_active: document.getElementById('rename_active').checked,
                     ping_active: document.getElementById('ping_active').checked,
+                    debug_active: document.getElementById('debug_active').checked,
                     count_algo_active: document.getElementById('count_algo_active').checked,
                     backlog_active: document.getElementById('backlog_active').checked,
                     greylist_active: document.getElementById('greylist_active').checked,

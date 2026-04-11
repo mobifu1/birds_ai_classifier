@@ -77,7 +77,7 @@ class BirdAppController:
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         log_line = f"[{timestamp}] {message}"
         self.logs.append(log_line)
-        if DEBUG:
+        if self.settings.get('debug_active', True):
             try:
                 ts_full = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 with open(DEBUG_FILE, "a", encoding="utf-8") as f:

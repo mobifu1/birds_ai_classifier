@@ -46,7 +46,7 @@ from tensorflow.keras.models import load_model
 import numpy as np
 
 # --- KONFIGURATION ---
-DEBUG = True  # Auf True setzen, um Log-Fenster-Inhalte in eine Datei zu schreiben
+# DEBUG wird jetzt über settings.json gesteuert (Schlüssel: 'debug_active')
 DEBUG_FILE = "debug_log.txt"
 
 DB_FILE = "birds_stats.db"
@@ -1954,7 +1954,7 @@ class BirdAppController:
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         log_line = f"[{timestamp}] {message}"
         self.logs.append(log_line)
-        if DEBUG:
+        if self.settings.get('debug_active', True):
             try:
                 ts_full = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 with open(DEBUG_FILE, "a", encoding="utf-8") as f:
@@ -2162,6 +2162,7 @@ def settings_page():
                     
                     <div style="margin-top: 20px;">
                         <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="ping_active" {'checked' if s.get('ping_active', True) else ''}> <label style="color:darkgreen;">Camera: ping aktiv</label></div>
+                        <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="debug_active" {'checked' if s.get('debug_active', True) else ''}> <label style="color:orange;">Debug Log</label></div>
                         <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="count_algo_active" {'checked' if s.get('count_algo_active', True) else ''}> <label style="color:purple;">Count Algorithm (Hectic/Normal/Lazy)</label></div>
                     </div>
                 </div>
@@ -2289,6 +2290,7 @@ def settings_page():
                         threshold: parseInt(document.getElementById('threshold').value),
                         guess_threshold: parseInt(document.getElementById('guess_threshold').value),
                         ping_active: document.getElementById('ping_active').checked,
+                        debug_active: document.getElementById('debug_active').checked,
                         count_algo_active: document.getElementById('count_algo_active').checked,
                         webhook_active: document.getElementById('webhook_active').checked,
                         backlog_active: document.getElementById('backlog_active').checked,
