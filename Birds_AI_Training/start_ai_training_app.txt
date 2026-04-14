@@ -33,6 +33,15 @@ Der "Loss" ist eine abstrakte Zahl, die angibt, wie "falsch" das Modell liegt. A
 0.2 - 0.4: Sehr gut. Das Modell ist sich seiner Sache sicher.
 < 0.1: Fast perfekt. (Gefahr von Overfitting, wenn val_loss gleichzeitig hoch ist).
 
+Der Wert für die Verringerung der Lernrate wird in deinem Skript nicht streng zyklisch (wie etwa beim Cosine Annealing oder Cyclic Learning Rate Algorithmus) abgesenkt, sondern adaptiv nach dem ReduceLROnPlateau-Algorithmus von Keras/TensorFlow.
+
+Hier ist genau, was in Zeile 263 (ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=4, min_lr=1e-7, verbose=1)) passiert:
+
+Überwachung (monitor='val_loss'): Der Algorithmus beobachtet nach jeder Epoche den Validierungsfehler (val_loss). Das Ziel ist, dass dieser Wert stetig sinkt.
+Geduld / Plateau (patience=4): Stagniert der Validierungsfehler, anstatt sich zu verbessern, wartet der Algorithmus genau 4 aufeinanderfolgende Epochen ab. Verbessert sich das Modell in dieser Zeit nicht, geht er davon aus, dass das Training in einem lokalen Minimum (Plateau) feststeckt.
+Absenkungs-Faktor (factor=0.2): Tritt der Fall aus Schritt 2 ein, greift der Algorithmus ein und senkt die Lernrate auf 20 % ihres aktuellen Wertes (sie wird also um 80 % verringert). Mit dieser feineren Schrittweite soll die KI aus dem Plateau entkommen.
+Untergrenze (min_lr=1e-7): Dieser Vorgang kann sich mehrfach wiederholen, allerdings sinkt die Lernrate niemals unter den festgelegten Minimalwert von 0.0000001.
+
 Die Goldene Regel: Der Vergleich (Gap)
 Die nackten Zahlen bringen dir nichts, wenn du nicht Training (accuracy) mit Validierung (val_accuracy) vergleichst.
 

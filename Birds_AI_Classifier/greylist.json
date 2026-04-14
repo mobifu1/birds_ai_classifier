@@ -1,10 +1,9 @@
 [
-  "Elster",
-  "Kohlmeise",
-  "Rabe",
-  "Blaumeise",
   "Rotkehlchen",
-  "Amsel",
+  "Haussperling",
   "Taube",
-  "Haussperling"
+  "Kohlmeise",
+  "Elster",
+  "Blaumeise",
+  "Rabe;Amsel"
 ]

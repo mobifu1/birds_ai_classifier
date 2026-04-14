@@ -5,7 +5,7 @@ import shutil
 import numpy as np
 import random
 import tensorflow as tf
-from tensorflow.keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array, load_img
+from tensorflow.keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array, load_img # type: ignore
 
 # --- MATPLOTLIB FÜR GRAPHEN ---
 import matplotlib
@@ -13,8 +13,8 @@ matplotlib.use('Agg') # Verhindert GUI-Fehler im reinen CMD-Fenster
 import matplotlib.pyplot as plt
 
 # --- MODELL: InceptionV3 (wie gewünscht) ---
-from tensorflow.keras.applications import InceptionV3
-from tensorflow.keras.applications.inception_v3 import preprocess_input
+from tensorflow.keras.applications import InceptionV3 # type: ignore
+from tensorflow.keras.applications.inception_v3 import preprocess_input # type: ignore
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Dropout
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.optimizers import Adam

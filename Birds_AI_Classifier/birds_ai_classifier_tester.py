@@ -8,8 +8,8 @@ import numpy as np
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing import image as tf_image
-from tensorflow.keras.applications.inception_v3 import preprocess_input
+from tensorflow.keras.preprocessing import image as tf_image # type: ignore
+from tensorflow.keras.applications.inception_v3 import preprocess_input # type: ignore
 
 class BirdAITesterApp:
     def __init__(self, root):
@@ -33,6 +33,9 @@ class BirdAITesterApp:
         self.lbl_status = tk.Label(root, text="Modell wird geladen...", font=("Arial", 12), fg="blue")
         self.lbl_status.pack(pady=5)
         
+        self.lbl_model_path = tk.Label(root, text="Modell-Pfad: wird ermittelt...", font=("Arial", 10), fg="gray")
+        self.lbl_model_path.pack(pady=2)
+        
         self.img_label = tk.Label(root)
         self.img_label.pack(pady=10)
         
@@ -55,6 +58,7 @@ class BirdAITesterApp:
                 self.labels_map = {int(k): v for k, v in raw_labels.items()}
                 
             self.lbl_status.config(text="Modell erfolgreich geladen. Bereit.", fg="green")
+            self.lbl_model_path.config(text=f"Modell-Pfad: {os.path.abspath(self.model_path)}")
         except Exception as e:
             self.lbl_status.config(text=f"Fehler beim Laden: {str(e)}", fg="red")
             messagebox.showerror("Fehler", f"Fehler bei der Initialisierung:\n{str(e)}")
