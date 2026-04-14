@@ -26,7 +26,10 @@ Gerne erkläre ich dir die genaue Reihenfolge, in der diese Schritte in deinem C
 
 Die Reihenfolge im Code ist wie folgt aufgebaut (ein Schritt nach dem anderen):
 
-1. Ein Bild wird dem Classifier zur Analyse übergeben: Ergebnis= a.) "Unbekannt" da unter Schwellwert / b.) "Klassifiziert" da über Schwellwert  (z.B. Klasse="Blaumeise") und der entsprechenden Klasse zugeordnet.
+1. Ein Bild wird dem Classifier zur Analyse übergeben:
+Ergebnis = liegt über Schwellwert Konfidenz > Das Bild wird der entsprechenden Klasse zugeordnet z.B. Klasse="Blaumeise" 
+Ergebnis = liegt unter dem Schwellwert Konfidenz und über dem Schwellwert Vermutung > Das Bild wird erneut geprüft > liegt der Schwellwert über dem Vorsprung > Bild wird klassifiziert
+Ergebnis = liegt unter dem Schwellwert Vermutung >  Das Bild wird als unbekannt eingestuft
 
 2. Der Wert "Vorsprung der Konfidenz (Threshold %)" soll den Mindestabstand in % von Konfidenzwert Top 1 % zu Top 2 % eines Bildes darstellen.
 Sollte die Vorhersage für Top 1 zwischen "Vermutung" und "Konfidenz" landen, wird nun die Differenz zwischen Top 1 % und Top 2 % berechnet.
