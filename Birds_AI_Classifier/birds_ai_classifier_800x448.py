@@ -343,16 +343,19 @@ class BirdAI:
             preds = self.model.predict(x, verbose=0)
 
             if self.use_custom:
-                best_index = np.argmax(preds[0])
+                sorted_indices = np.argsort(preds[0])[::-1]
+                best_index = sorted_indices[0]
                 confidence = float(preds[0][best_index])
+                confidence2 = float(preds[0][sorted_indices[1]]) if len(preds[0]) > 1 else 0.0
                 label_name = self.labels_map.get(best_index, "Unbekannt")
-                return label_name.replace('_', ' ').title(), confidence
+                return label_name.replace('_', ' ').title(), confidence, confidence2
             else:
-                results = decode_predictions(preds, top=1)[0]
+                results = decode_predictions(preds, top=2)[0]
                 english_label = results[0][1]
-                confidence = results[0][2]
+                confidence = float(results[0][2])
+                confidence2 = float(results[1][2]) if len(results) > 1 else 0.0
                 translated_label = self.translations.get(english_label, english_label)
-                return translated_label.replace('_', ' ').title(), confidence
+                return translated_label.replace('_', ' ').title(), confidence, confidence2
         except Exception as e:
             return "Fehler", 0.0
 
@@ -361,6 +364,7 @@ class FolderMonitor:
     def __init__(self, update_log_callback, get_threshold_callback, get_guess_threshold_callback, update_size_callback, 
                  get_delete_callback, 
                  get_greylist_active_callback, get_greylist_callback,
+                 get_margin_threshold_callback,
                  get_backlog_active_callback, get_backlog_callback,
                  get_blacklist_callback, update_duration_callback=None,
                  update_remaining_callback=None, get_algo_active_callback=None,
@@ -373,6 +377,7 @@ class FolderMonitor:
         self.log_callback = update_log_callback
         self.get_threshold = get_threshold_callback
         self.get_guess_threshold = get_guess_threshold_callback
+        self.get_margin_threshold = get_margin_threshold_callback if get_margin_threshold_callback else lambda: 10
         self.update_size_callback = update_size_callback
         self.get_delete_enabled = get_delete_callback
         self.get_greylist_active = get_greylist_active_callback
@@ -541,7 +546,12 @@ class FolderMonitor:
 
                 start_time = time.time()
                 try:
-                    species, conf = self.ai.analyze_image(str(file_path))
+                    res = self.ai.analyze_image(str(file_path))
+                    if len(res) == 3:
+                        species, conf, conf2 = res
+                    else:
+                        species, conf = res
+                        conf2 = 0.0
                 except Exception as e:
                     self.log_callback(f"[{file_path.name}] ❌ Fehler in analyze_image: {e}")
                     continue
@@ -574,13 +584,20 @@ class FolderMonitor:
                 except: pass
 
                 conf_percent = int(conf * 100)
+                conf2_percent = int(conf2 * 100)
+                margin_percent = conf_percent - conf2_percent
                 timestamp = get_original_date(str(file_path))
                 
                 # 1. Classification (Unbekannt oder Klasse)
                 if conf_percent < current_guess_threshold:
                     species = "Unbekannt"
                 elif conf_percent < current_threshold:
-                    species = "Vermutung"
+                    current_margin_threshold = self.get_margin_threshold()
+                    if margin_percent >= current_margin_threshold:
+                        species = species.replace(" ", "_")
+                        self.log_callback(f"[{file_path.name}] 🎯 Vorsprung reicht ({margin_percent}%), akzeptiert als: {species}")
+                    else:
+                        species = "Vermutung"
                 else:
                     species = species.replace(" ", "_")
                 
@@ -1896,6 +1913,7 @@ class BirdAppController:
             update_log_callback=self.update_log, 
             get_threshold_callback=lambda: self.settings.get("threshold", 70),
             get_guess_threshold_callback=lambda: self.settings.get("guess_threshold", 40),
+            get_margin_threshold_callback=lambda: self.settings.get("margin_threshold", 10),
             update_size_callback=self.update_size_display,
             get_delete_callback=lambda: self.settings.get("delete_active", True),
             get_greylist_active_callback=lambda: self.settings.get("greylist_active", True), 
@@ -2156,6 +2174,11 @@ def settings_page():
                     </div>
                     
                     <div class="row">
+                        <label>Vorsprung der Konfidenz (Threshold %):</label>
+                        <input type="number" id="margin_threshold" value="{s.get('margin_threshold', 10)}" min="0" max="100">
+                    </div>
+                    
+                    <div class="row">
                         <label>Mindest-Wahrscheinlichkeit Vermutung (Guess Threshold %):</label>
                         <input type="number" id="guess_threshold" value="{s.get('guess_threshold', 40)}" min="0" max="100">
                     </div>
@@ -2288,6 +2311,7 @@ def settings_page():
                         recursive: document.getElementById('recursive').checked,
                         camera_ip: document.getElementById('camera_ip').value,
                         threshold: parseInt(document.getElementById('threshold').value),
+                        margin_threshold: parseInt(document.getElementById('margin_threshold').value),
                         guess_threshold: parseInt(document.getElementById('guess_threshold').value),
                         ping_active: document.getElementById('ping_active').checked,
                         debug_active: document.getElementById('debug_active').checked,
