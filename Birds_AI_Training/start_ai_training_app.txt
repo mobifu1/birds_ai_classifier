@@ -6,7 +6,7 @@ Damit die Nutzung des eigenen trainierten Modells funktioniert, müssen nach dem
 
 Kurze Anleitung zur Kontrolle:
 Starte das Training.
-Es wird ein neuer Ordner "birds_training_dataset_masked_source" erzeugt und mit oben und unten geschwärzten Bildern befüllt.
+Es wird ein neuer Ordner "birds_training_dataset_masked_source" erzeugt und ggf. mit oben und unten geschwärzten Bildern befüllt.
 Mit den Parametern für MASK_TOP oder MASK_BOTTOM im Skript kann der Bereich eingestellt werden.
 Sobald alles perfekt schwarz abgedeckt ist, lass das Training durchlaufen.
 
