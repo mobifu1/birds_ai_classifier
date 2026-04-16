@@ -1,12 +1,15 @@
 import os
 import time
 import requests
+from io import BytesIO
+from PIL import Image
 from duckduckgo_search import DDGS
 
 # --- KONFIGURATION ---
 GESUCHTER_VOGEL = "Moenchsgrasmuecke"     # Nur noch der deutsche Name nötig
 ANZAHL_PRO_SUCHE = 30             # Bilder pro Suchbegriff
 DOWNLOAD_ORDNER = "neue_bilder_downloads"
+pic_min_size = 500                # Minimale Kantenlänge (Breite UND Höhe) in Pixeln
 
 def clean_filename(query, index):
     """Erstellt saubere Dateinamen: Stieglitz_Vogel_DDG_01.jpg"""
@@ -17,8 +20,8 @@ def clean_filename(query, index):
     
     return f"{clean_query}_DDG_{index}.jpg"
 
-def download_images(query, folder, max_images):
-    """Lädt Bilder via DuckDuckGo herunter"""
+def download_images(query, folder, max_images, min_size=pic_min_size):
+    """Lädt Bilder via DuckDuckGo herunter (nur wenn beide Kanten >= min_size)"""
     print(f"   > Suche nach: '{query}'...")
     
     count = 0
@@ -41,6 +44,18 @@ def download_images(query, folder, max_images):
                     response = requests.get(image_url, timeout=5)
                     
                     if response.status_code == 200:
+                        # Bildgröße prüfen
+                        try:
+                            img = Image.open(BytesIO(response.content))
+                            width, height = img.size
+                        except Exception:
+                            print(f"      - Übersprungen (ungültiges Bild)")
+                            continue
+                        
+                        if width < min_size or height < min_size:
+                            print(f"      - Übersprungen: {width}x{height} (min. {min_size}x{min_size} erforderlich)")
+                            continue
+                        
                         # Dateiendung ermitteln
                         file_ext = os.path.splitext(image_url)[1].lower()
                         if file_ext not in ['.jpg', '.jpeg', '.png']:
@@ -54,7 +69,7 @@ def download_images(query, folder, max_images):
                         with open(filepath, 'wb') as f:
                             f.write(response.content)
                         
-                        print(f"      + Gespeichert: {filename}")
+                        print(f"      + Gespeichert: {filename} ({width}x{height})")
                         count += 1
                         
                 except Exception:
