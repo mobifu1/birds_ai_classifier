@@ -15,7 +15,7 @@ class BirdAITesterApp:
     # =====================================================================
     # Kamera-Auflösung einstellen (Breite x Höhe in Pixel)
     # Das eingehende Bild wird zuerst auf diese Größe skaliert,
-    # dann quadratisch gepaddet und auf 500x500 für das Modell gebracht.
+    # dann quadratisch gepaddet und auf 600x600 für das Modell gebracht.
     # =====================================================================
     CAMERA_X = 800   # Breite der Kamera in Pixel
     CAMERA_Y = 448   # Höhe der Kamera in Pixel
@@ -27,7 +27,7 @@ class BirdAITesterApp:
         self.root.geometry("900x800")
         
         # Model and Labels
-        self.model_path = "my_birds_modell_500x500.keras"
+        self.model_path = "my_birds_modell_600x600.keras"
         self.labels_path = "model_labels.json"
         self.model = None
         self.labels_map = {}
@@ -93,15 +93,15 @@ class BirdAITesterApp:
         """Bild laden und durch die komplette Vorverarbeitung führen:
         1. Auf Kamera-Auflösung skalieren (CAMERA_X × CAMERA_Y)
         2. Quadratisch padden (schwarze Balken)
-        3. Auf 500x500 für das Modell skalieren
+        3. Auf 600x600 für das Modell skalieren
         """
         img = Image.open(file_path).convert('RGB')
         # Schritt 1: Auf Kamera-Auflösung skalieren
         img = img.resize((self.CAMERA_X, self.CAMERA_Y), Image.LANCZOS)
         # Schritt 2: Quadratisch padden
         img = self.pad_to_square(img)
-        # Schritt 3: Auf 500x500 skalieren
-        img = img.resize((500, 500), Image.LANCZOS)
+        # Schritt 3: Auf 600x600 skalieren
+        img = img.resize((600, 600), Image.LANCZOS)
         return img
 
     def load_and_classify(self):
@@ -120,7 +120,7 @@ class BirdAITesterApp:
         self.lbl_status.config(text=f"Verarbeite: {os.path.basename(file_path)}", fg="blue")
         self.root.update()
         
-        # Bild vorverarbeiten (Kamera-Resize → Pad → 500x500)
+        # Bild vorverarbeiten (Kamera-Resize → Pad → 600x600)
         try:
             processed_img = self.preprocess_image(file_path)
         except Exception as e:

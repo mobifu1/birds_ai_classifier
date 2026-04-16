@@ -10,7 +10,7 @@ from duckduckgo_search import DDGS
 LABELS_DATEI = "model_labels.json"    # JSON-Datei mit allen Vogelarten
 ANZAHL_PRO_SUCHE = 30                 # Bilder pro Suchbegriff
 DOWNLOAD_ORDNER = "neue_bilder_downloads"
-pic_min_size = 500                    # Minimale Kantenlänge (Breite UND Höhe) in Pixeln
+pic_min_size = 600                    # Minimale Kantenlänge (Breite UND Höhe) in Pixeln
 
 def load_labels(json_path):
     """Lädt alle Vogelarten aus der model_labels.json Datei."""

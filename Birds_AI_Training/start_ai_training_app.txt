@@ -4,16 +4,15 @@ Damit die Nutzung des eigenen trainierten Modells funktioniert, müssen nach dem
 -my_birds_modell.keras
 -model_labels.json
 
-1. starte birds_pic_loader.py > wähle Vogelart > Ergebnis: verwende nur Bilder die größer sind als 500x500px (pic_min_size = 500)
+1. starte birds_pic_loader_labels.py > von model_labels.json > Ergebnis: download nur Bilder die größer sind als 600x600px (pic_min_size = 600)
 2. starte birds_pic_unsquare.py > filter alle Bilder heraus, welche nicht quadratisch sind > Toleranz max. 15%
 3. starte birds_pic_crop_square.py > schneidet alle ausgewählten Bilder quadratisch zu
 4. kopiere alle dann noch verwendbaren Bilder in die entsprechenden klassifizierten Trainingsdatenordner (mind. 50x Bilder pro Klasse)
 5. starte birds_pic_rename.py > alle Bilder des Trainingsdatenordners werden umbenannt > random + klasse.jpg
 6. starte birds_pic_to_rgb.py > konvertiere alle Bilder des Trainingsdatenordners in das richtige Format
-7. starte birds_ai_training_500x500.py > warte ein paar Stunden bis es fertig ist > neu: my_birds_modell_500x500.keras & model_labels.json
-8. starte birds_ai_classifier_tester_500x500.py > teste ein paar Bilder von der Kamera > nutze: my_birds_modell_500x500.keras & model_labels.json
-9. starte birds_ai_classifier_500x500.py > Webserver: localhost:5000 > nutze: my_birds_modell_500x500.keras & model_labels.json
-
+7. starte birds_ai_training_600x600.py > warte ein paar Stunden bis es fertig ist > neu: my_birds_modell_600x600.keras & model_labels.json
+8. starte birds_ai_classifier_tester_600x600.py > teste ein paar Bilder von der Kamera > nutze: my_birds_modell_600x600.keras & model_labels.json
+9. starte birds_ai_classifier_600x600.py > Webserver: localhost:5000 > nutze: my_birds_modell_600x600.keras & model_labels.json
 
 Kurze Anleitung zur Kontrolle:
 Starte das Training.

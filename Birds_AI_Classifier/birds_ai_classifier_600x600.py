@@ -79,7 +79,13 @@ CAMERA_X_AXIS = 800   # Breite des Kamerabildes in Pixel
 CAMERA_Y_AXIS = 448   # Höhe des Kamerabildes in Pixel
 
 # --- MODELL ZIELGRÖSSE ---
-MODEL_TARGET_SIZE = 299  # Das trainierte Modell erwartet 299x299 Pixel
+MODEL_TARGET_SIZE = 00  # Das trainierte Modell erwartet 600x600 Pixel
+
+# --- DEBUG: Bildbearbeitung Ergebnis speichern ---
+# Wenn True, wird das fertig bearbeitete Bild (nach Letterboxing, Resize und Masking)
+# in den Ordner 'debug_live_masking' kopiert, bevor es dem Modell übergeben wird.
+# So kann man genau sehen, was das KI-Modell als Eingabe erhält.
+debug_result_bildbearbeitung = True
 
 # --- HELFER: DATUM AUS BILD LESEN ---
 def get_original_date(file_path):
@@ -310,7 +316,7 @@ def init_db():
 # --- KI KLASSIFIZIERUNG ---
 class BirdAI:
     def __init__(self):
-        self.custom_model_path = "my_birds_modell_299x299.keras"
+        self.custom_model_path = "my_birds_modell_600x600.keras"
         self.labels_path = "model_labels.json"
         self.use_custom = False
         self.labels_map = {}
@@ -375,6 +381,18 @@ class BirdAI:
             x[:MASK_TOP, :, :] = 0
             h = x.shape[0]
             x[h-MASK_BOTTOM:, :, :] = 0
+
+            # --- DEBUG: Bearbeitetes Bild speichern ---
+            if debug_result_bildbearbeitung:
+                try:
+                    debug_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_live_masking")
+                    os.makedirs(debug_dir, exist_ok=True)
+                    debug_img = Image.fromarray(x.astype('uint8'))
+                    debug_filename = f"debug_{os.path.basename(img_path)}"
+                    debug_img.save(os.path.join(debug_dir, debug_filename))
+                except Exception as e:
+                    print(f"Debug-Bild konnte nicht gespeichert werden: {e}")
+
             x = np.expand_dims(x, axis=0)
             x = preprocess_input(x)
             

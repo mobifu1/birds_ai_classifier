@@ -1,2 +1,5 @@
 pip install bing-image-downloader
 pip install duckduckgo_search
+
+..._class > only one class defined in code
+..._labels > classes load from model_labels.json
