@@ -72,24 +72,11 @@ MASK_TOP = 0
 MASK_BOTTOM = 0
 
 # --- KAMERA AUFLÖSUNG ---
-# Hier die Abmaße des ankommenden Kamerabildes einstellen.
-# Das Bild wird per Blur-Padding zu einem Quadrat ergänzt,
-# damit kein Bildinhalt abgeschnitten wird, bevor es auf die Modell-Größe skaliert wird.
+# Das Bild wird in 3 quadratische Teile (links, mitte, rechts) aufgeteilt,
+# die jeweils auf die Modell-Größe skaliert und analysiert werden.
 
 # --- MODELL ZIELGRÖSSE ---
 MODEL_TARGET_SIZE = 600  # Das trainierte Modell erwartet 600x600 Pixel
-
-# --- BLUR-PADDING ---
-BLUR_RADIUS = 40  # Stärke des Gaussian Blur für den Hintergrund
-
-# --- PADDING MODUS ---
-# Hier den gewünschten Bildbearbeitungsmodus einstellen.
-# Mögliche Werte:
-#   "blur"    -> Blur-Padding (unscharfer Hintergrund füllt das Quadrat)
-#   "resize"  -> Hartes Resize auf 600x600 (Bild wird verzerrt)
-#   "edge"    -> Replicate / Edge-Padding (äußerste Pixelreihe wird wiederholt)
-#   "crop"    -> Center-Crop (Bild wird links/rechts abgeschnitten, quadratisch)
-PADDING_MODE = "blur"
 
 # --- DEBUG: Bildbearbeitung Ergebnis speichern ---
 # Wenn True, wird das fertig bearbeitete Bild (nach Letterboxing, Resize und Masking)
@@ -356,165 +343,82 @@ class BirdAI:
             'black_grouse': 'Birkhuhn', 'jay': 'Eichelhäher'
         }
 
-    @staticmethod
-    def blur_pad_to_square(img, target_size):
-        """Blur-Padding: Bild quadratisch machen mit unscharfem Hintergrund.
-        
-        Blur-Padding: Der Hintergrund ist eine stark weichgezeichnete,
-        aufgeblasene Version des Originalbildes. Das skalierte Original
-        wird mittig darübergelegt – wie bei TV-Dokumentationen mit
-        Hochkant-Videos. Keine harten Kanten, nur natürliche Farben.
-        """
-        w, h = img.size
-        
-        # Schritt 1: Hintergrund – Originalbild auf Zielgröße aufblasen (verzerrt)
-        background = img.resize((target_size, target_size), Image.LANCZOS)
-        
-        # Schritt 2: Starken Gaussian Blur auf den Hintergrund legen
-        background = background.filter(ImageFilter.GaussianBlur(radius=BLUR_RADIUS))
-        
-        # Schritt 3: Originalbild proportional in das Quadrat einpassen
-        scale = min(target_size / w, target_size / h)
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-        foreground = img.resize((new_w, new_h), Image.LANCZOS)
-        
-        # Schritt 4: Vordergrundbild mittig auf den unscharfen Hintergrund legen
-        offset_x = (target_size - new_w) // 2
-        offset_y = (target_size - new_h) // 2
-        background.paste(foreground, (offset_x, offset_y))
-        
-        return background
-
-    @staticmethod
-    def resize_to_square(img, target_size):
-        """Hartes Resize: Bild direkt auf target_size x target_size skalieren (verzerrt)."""
-        return img.resize((target_size, target_size), Image.LANCZOS)
-
-    @staticmethod
-    def edge_pad_to_square(img, target_size):
-        """Replicate / Edge-Padding: Die äußerste Pixelreihe wird bis zum
-        Rand wiederholt, um das Bild quadratisch auf target_size zu bringen.
-        """
-        w, h = img.size
-
-        # Bild proportional in das Quadrat einpassen
-        scale = min(target_size / w, target_size / h)
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-        resized = img.resize((new_w, new_h), Image.LANCZOS)
-
-        # NumPy-Array für Pixel-Replikation
-        arr = np.array(resized)
-
-        # Vertikales Padding (oben/unten) – oberste/unterste Zeile replizieren
-        pad_top = (target_size - new_h) // 2
-        pad_bottom = target_size - new_h - pad_top
-
-        if pad_top > 0:
-            top_row = arr[0:1, :, :]
-            top_fill = np.repeat(top_row, pad_top, axis=0)
-            arr = np.concatenate([top_fill, arr], axis=0)
-        if pad_bottom > 0:
-            bottom_row = arr[-1:, :, :]
-            bottom_fill = np.repeat(bottom_row, pad_bottom, axis=0)
-            arr = np.concatenate([arr, bottom_fill], axis=0)
-
-        # Horizontales Padding (links/rechts) – äußerste Spalte replizieren
-        pad_left = (target_size - new_w) // 2
-        pad_right = target_size - new_w - pad_left
-
-        if pad_left > 0:
-            left_col = arr[:, 0:1, :]
-            left_fill = np.repeat(left_col, pad_left, axis=1)
-            arr = np.concatenate([left_fill, arr], axis=1)
-        if pad_right > 0:
-            right_col = arr[:, -1:, :]
-            right_fill = np.repeat(right_col, pad_right, axis=1)
-            arr = np.concatenate([arr, right_fill], axis=1)
-
-        return Image.fromarray(arr)
-
-    @staticmethod
-    def crop_to_square(img, target_size):
-        """Center-Crop: Bild links und rechts gleichmäßig abschneiden,
-        sodass es quadratisch wird, dann auf target_size skalieren.
-        """
-        w, h = img.size
-        if w > h:
-            # Breiter als hoch → links und rechts abschneiden
-            offset = (w - h) // 2
-            img = img.crop((offset, 0, offset + h, h))
-        elif h > w:
-            # Höher als breit → oben und unten abschneiden
-            offset = (h - w) // 2
-            img = img.crop((0, offset, w, offset + w))
-        # Jetzt ist das Bild quadratisch → auf Zielgröße skalieren
-        return img.resize((target_size, target_size), Image.LANCZOS)
-
-    @staticmethod
-    def prepare_image_for_model(img_path):
-        """
-        Lädt ein Bild und bringt es je nach PADDING_MODE auf
-        ein quadratisches Format (MODEL_TARGET_SIZE x MODEL_TARGET_SIZE).
-        
-        Modi: blur, resize, edge, crop (siehe PADDING_MODE Konfiguration)
-        """
-        # Bild laden
-        img = Image.open(img_path).convert('RGB')
-               
-        target_size = MODEL_TARGET_SIZE
-
-        # Padding-Modus anwenden
-        if PADDING_MODE == "resize":
-            return BirdAI.resize_to_square(img, target_size)
-        elif PADDING_MODE == "edge":
-            return BirdAI.edge_pad_to_square(img, target_size)
-        elif PADDING_MODE == "crop":
-            return BirdAI.crop_to_square(img, target_size)
-        else:
-            # Standard: Blur-Padding
-            return BirdAI.blur_pad_to_square(img, target_size)
-
     def analyze_image(self, img_path):
         try:
-            # NEU: Bild mit Letterboxing vorbereiten (kein Abschneiden, kein Verzerren)
-            img = self.prepare_image_for_model(img_path)
-            x = tf_image.img_to_array(img)
-            x[:MASK_TOP, :, :] = 0
-            h = x.shape[0]
-            x[h-MASK_BOTTOM:, :, :] = 0
-
-            # --- DEBUG: Bearbeitetes Bild speichern ---
-            if debug_result_bildbearbeitung:
-                try:
-                    debug_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_live_masking")
-                    os.makedirs(debug_dir, exist_ok=True)
-                    debug_img = Image.fromarray(x.astype('uint8'))
-                    debug_filename = f"debug_{os.path.basename(img_path)}"
-                    debug_img.save(os.path.join(debug_dir, debug_filename))
-                except Exception as e:
-                    print(f"Debug-Bild konnte nicht gespeichert werden: {e}")
-
-            x = np.expand_dims(x, axis=0)
-            x = preprocess_input(x)
+            # Bild laden
+            img = Image.open(img_path).convert('RGB')
+            w, h = img.size
+            target_size = MODEL_TARGET_SIZE
             
-            preds = self.model.predict(x, verbose=0)
-
-            if self.use_custom:
-                sorted_indices = np.argsort(preds[0])[::-1]
-                best_index = sorted_indices[0]
-                confidence = float(preds[0][best_index])
-                confidence2 = float(preds[0][sorted_indices[1]]) if len(preds[0]) > 1 else 0.0
-                label_name = self.labels_map.get(best_index, "Unbekannt")
-                return label_name.replace('_', ' ').title(), confidence, confidence2
+            # Bild in 3 quadratische Teile (links, mitte, rechts) aufteilen
+            if w > h:
+                crop_size = h
+                left_img = img.crop((0, 0, crop_size, crop_size))
+                mid_img = img.crop(((w - crop_size) // 2, 0, (w + crop_size) // 2, crop_size))
+                right_img = img.crop((w - crop_size, 0, w, crop_size))
             else:
-                results = decode_predictions(preds, top=2)[0]
-                english_label = results[0][1]
-                confidence = float(results[0][2])
-                confidence2 = float(results[1][2]) if len(results) > 1 else 0.0
-                translated_label = self.translations.get(english_label, english_label)
-                return translated_label.replace('_', ' ').title(), confidence, confidence2
+                # Fallback, falls das Bild nicht im Querformat ist
+                crop_size = w
+                left_img = img.crop((0, 0, crop_size, crop_size))
+                mid_img = img.crop((0, (h - crop_size) // 2, crop_size, (h + crop_size) // 2))
+                right_img = img.crop((0, h - crop_size, crop_size, h))
+                
+            parts = [left_img, mid_img, right_img]
+            part_names = ["links", "mitte", "rechts"]
+            
+            best_species = "Unbekannt"
+            best_conf = 0.0
+            best_conf2 = 0.0
+
+            for i, part in enumerate(parts):
+                # Teil auf 600x600 (bzw. MODEL_TARGET_SIZE) rezisen
+                part_resized = part.resize((target_size, target_size), Image.LANCZOS)
+                x = tf_image.img_to_array(part_resized)
+                
+                # Masking anwenden
+                x[:MASK_TOP, :, :] = 0
+                img_h = x.shape[0]
+                if MASK_BOTTOM > 0:
+                    x[img_h-MASK_BOTTOM:, :, :] = 0
+
+                # --- DEBUG: Bearbeitetes Bild speichern ---
+                if debug_result_bildbearbeitung:
+                    try:
+                        debug_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_live_masking")
+                        os.makedirs(debug_dir, exist_ok=True)
+                        debug_img = Image.fromarray(x.astype('uint8'))
+                        debug_filename = f"debug_{part_names[i]}_{os.path.basename(img_path)}"
+                        debug_img.save(os.path.join(debug_dir, debug_filename))
+                    except Exception as e:
+                        print(f"Debug-Bild {part_names[i]} konnte nicht gespeichert werden: {e}")
+
+                x = np.expand_dims(x, axis=0)
+                x = preprocess_input(x)
+                
+                preds = self.model.predict(x, verbose=0)
+
+                if self.use_custom:
+                    sorted_indices = np.argsort(preds[0])[::-1]
+                    best_index = sorted_indices[0]
+                    confidence = float(preds[0][best_index])
+                    confidence2 = float(preds[0][sorted_indices[1]]) if len(preds[0]) > 1 else 0.0
+                    label_name = self.labels_map.get(best_index, "Unbekannt")
+                    species = label_name.replace('_', ' ').title()
+                else:
+                    results = decode_predictions(preds, top=2)[0]
+                    english_label = results[0][1]
+                    confidence = float(results[0][2])
+                    confidence2 = float(results[1][2]) if len(results) > 1 else 0.0
+                    translated_label = self.translations.get(english_label, english_label)
+                    species = translated_label.replace('_', ' ').title()
+                    
+                # Bestes Ergebnis speichern
+                if confidence > best_conf:
+                    best_conf = confidence
+                    best_conf2 = confidence2
+                    best_species = species
+
+            return best_species, best_conf, best_conf2
         except Exception as e:
             return "Fehler", 0.0
 
