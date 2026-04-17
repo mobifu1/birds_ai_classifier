@@ -666,7 +666,9 @@ class FolderMonitor:
                         species = species.replace(" ", "_")
                         self.log_callback(f"[{file_path.name}] 🎯 Vorsprung reicht ({margin_percent}%), akzeptiert als: {species}")
                     else:
+                        top1_species = species.replace(" ", "_")
                         species = "Vermutung"
+                        self.log_callback(f"[{file_path.name}] 🤔 Vermutung ({top1_species} {conf_percent}%)")
                 else:
                     species = species.replace(" ", "_")
                 
