@@ -75,14 +75,21 @@ MASK_BOTTOM = 0
 # Hier die Abmaße des ankommenden Kamerabildes einstellen.
 # Das Bild wird per Blur-Padding zu einem Quadrat ergänzt,
 # damit kein Bildinhalt abgeschnitten wird, bevor es auf die Modell-Größe skaliert wird.
-CAMERA_X_AXIS = 800   # Breite des Kamerabildes in Pixel
-CAMERA_Y_AXIS = 448   # Höhe des Kamerabildes in Pixel
 
 # --- MODELL ZIELGRÖSSE ---
 MODEL_TARGET_SIZE = 600  # Das trainierte Modell erwartet 600x600 Pixel
 
 # --- BLUR-PADDING ---
 BLUR_RADIUS = 40  # Stärke des Gaussian Blur für den Hintergrund
+
+# --- PADDING MODUS ---
+# Hier den gewünschten Bildbearbeitungsmodus einstellen.
+# Mögliche Werte:
+#   "blur"    -> Blur-Padding (unscharfer Hintergrund füllt das Quadrat)
+#   "resize"  -> Hartes Resize auf 600x600 (Bild wird verzerrt)
+#   "edge"    -> Replicate / Edge-Padding (äußerste Pixelreihe wird wiederholt)
+#   "crop"    -> Center-Crop (Bild wird links/rechts abgeschnitten, quadratisch)
+PADDING_MODE = "blur"
 
 # --- DEBUG: Bildbearbeitung Ergebnis speichern ---
 # Wenn True, wird das fertig bearbeitete Bild (nach Letterboxing, Resize und Masking)
@@ -350,21 +357,14 @@ class BirdAI:
         }
 
     @staticmethod
-    def prepare_image_for_model(img_path):
-        """
-        Lädt ein Bild, bringt es auf die konfigurierte Kamera-Auflösung
-        und erstellt per Blur-Padding ein quadratisches Bild.
+    def blur_pad_to_square(img, target_size):
+        """Blur-Padding: Bild quadratisch machen mit unscharfem Hintergrund.
         
         Blur-Padding: Der Hintergrund ist eine stark weichgezeichnete,
         aufgeblasene Version des Originalbildes. Das skalierte Original
         wird mittig darübergelegt – wie bei TV-Dokumentationen mit
         Hochkant-Videos. Keine harten Kanten, nur natürliche Farben.
         """
-        # Bild laden und auf Kamera-Auflösung bringen
-        img = Image.open(img_path).convert('RGB')
-        img = img.resize((CAMERA_X_AXIS, CAMERA_Y_AXIS), Image.LANCZOS)
-        
-        target_size = MODEL_TARGET_SIZE
         w, h = img.size
         
         # Schritt 1: Hintergrund – Originalbild auf Zielgröße aufblasen (verzerrt)
@@ -385,6 +385,96 @@ class BirdAI:
         background.paste(foreground, (offset_x, offset_y))
         
         return background
+
+    @staticmethod
+    def resize_to_square(img, target_size):
+        """Hartes Resize: Bild direkt auf target_size x target_size skalieren (verzerrt)."""
+        return img.resize((target_size, target_size), Image.LANCZOS)
+
+    @staticmethod
+    def edge_pad_to_square(img, target_size):
+        """Replicate / Edge-Padding: Die äußerste Pixelreihe wird bis zum
+        Rand wiederholt, um das Bild quadratisch auf target_size zu bringen.
+        """
+        w, h = img.size
+
+        # Bild proportional in das Quadrat einpassen
+        scale = min(target_size / w, target_size / h)
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        resized = img.resize((new_w, new_h), Image.LANCZOS)
+
+        # NumPy-Array für Pixel-Replikation
+        arr = np.array(resized)
+
+        # Vertikales Padding (oben/unten) – oberste/unterste Zeile replizieren
+        pad_top = (target_size - new_h) // 2
+        pad_bottom = target_size - new_h - pad_top
+
+        if pad_top > 0:
+            top_row = arr[0:1, :, :]
+            top_fill = np.repeat(top_row, pad_top, axis=0)
+            arr = np.concatenate([top_fill, arr], axis=0)
+        if pad_bottom > 0:
+            bottom_row = arr[-1:, :, :]
+            bottom_fill = np.repeat(bottom_row, pad_bottom, axis=0)
+            arr = np.concatenate([arr, bottom_fill], axis=0)
+
+        # Horizontales Padding (links/rechts) – äußerste Spalte replizieren
+        pad_left = (target_size - new_w) // 2
+        pad_right = target_size - new_w - pad_left
+
+        if pad_left > 0:
+            left_col = arr[:, 0:1, :]
+            left_fill = np.repeat(left_col, pad_left, axis=1)
+            arr = np.concatenate([left_fill, arr], axis=1)
+        if pad_right > 0:
+            right_col = arr[:, -1:, :]
+            right_fill = np.repeat(right_col, pad_right, axis=1)
+            arr = np.concatenate([arr, right_fill], axis=1)
+
+        return Image.fromarray(arr)
+
+    @staticmethod
+    def crop_to_square(img, target_size):
+        """Center-Crop: Bild links und rechts gleichmäßig abschneiden,
+        sodass es quadratisch wird, dann auf target_size skalieren.
+        """
+        w, h = img.size
+        if w > h:
+            # Breiter als hoch → links und rechts abschneiden
+            offset = (w - h) // 2
+            img = img.crop((offset, 0, offset + h, h))
+        elif h > w:
+            # Höher als breit → oben und unten abschneiden
+            offset = (h - w) // 2
+            img = img.crop((0, offset, w, offset + w))
+        # Jetzt ist das Bild quadratisch → auf Zielgröße skalieren
+        return img.resize((target_size, target_size), Image.LANCZOS)
+
+    @staticmethod
+    def prepare_image_for_model(img_path):
+        """
+        Lädt ein Bild und bringt es je nach PADDING_MODE auf
+        ein quadratisches Format (MODEL_TARGET_SIZE x MODEL_TARGET_SIZE).
+        
+        Modi: blur, resize, edge, crop (siehe PADDING_MODE Konfiguration)
+        """
+        # Bild laden
+        img = Image.open(img_path).convert('RGB')
+               
+        target_size = MODEL_TARGET_SIZE
+
+        # Padding-Modus anwenden
+        if PADDING_MODE == "resize":
+            return BirdAI.resize_to_square(img, target_size)
+        elif PADDING_MODE == "edge":
+            return BirdAI.edge_pad_to_square(img, target_size)
+        elif PADDING_MODE == "crop":
+            return BirdAI.crop_to_square(img, target_size)
+        else:
+            # Standard: Blur-Padding
+            return BirdAI.blur_pad_to_square(img, target_size)
 
     def analyze_image(self, img_path):
         try:

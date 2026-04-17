@@ -1,7 +1,7 @@
 import os
 import json
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk, ImageFilter
 import numpy as np
 
@@ -16,9 +16,6 @@ class BirdAITesterApp:
     # Kamera-Auflösung einstellen (Breite x Höhe in Pixel)
     # Das eingehende Bild wird zuerst auf diese Größe skaliert,
     # dann per Blur-Padding quadratisch auf 600x600 gebracht.
-    # =====================================================================
-    CAMERA_X = 800   # Breite der Kamera in Pixel
-    CAMERA_Y = 448   # Höhe der Kamera in Pixel
     # =====================================================================
     BLUR_RADIUS = 40  # Stärke des Gaussian Blur für den Hintergrund
     # =====================================================================
@@ -40,6 +37,29 @@ class BirdAITesterApp:
         
         self.btn_load_image = tk.Button(self.top_frame, text="Bild laden und klassifizieren", command=self.load_and_classify, font=("Arial", 14), bg="#0d47a1", fg="white", padx=10, pady=5)
         self.btn_load_image.pack()
+        
+        # Padding-Modus Dropdown
+        self.padding_frame = tk.Frame(root)
+        self.padding_frame.pack(pady=5)
+        
+        tk.Label(self.padding_frame, text="Bildbearbeitung / Padding:", font=("Arial", 11)).pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.padding_modes = [
+            "Blur-Padding",
+            "Resize 600x600",
+            "Replicate / Edge-Padding",
+            "Center-Crop (quadratisch)"
+        ]
+        self.padding_var = tk.StringVar(value=self.padding_modes[0])
+        self.padding_dropdown = ttk.Combobox(
+            self.padding_frame,
+            textvariable=self.padding_var,
+            values=self.padding_modes,
+            state="readonly",
+            width=25,
+            font=("Arial", 11)
+        )
+        self.padding_dropdown.pack(side=tk.LEFT)
         
         self.lbl_status = tk.Label(root, text="Modell wird geladen...", font=("Arial", 12), fg="blue")
         self.lbl_status.pack(pady=5)
@@ -104,16 +124,86 @@ class BirdAITesterApp:
 
         return background
 
+    def resize_to_square(self, img, target_size=600):
+        """Hartes Resize: Bild direkt auf 600x600 skalieren (verzerrt)."""
+        return img.resize((target_size, target_size), Image.LANCZOS)
+
+    def edge_pad_to_square(self, img, target_size=600):
+        """Replicate / Edge-Padding: Die äußerste Pixelreihe wird bis zum
+        Rand wiederholt, um das Bild quadratisch auf target_size zu bringen.
+        """
+        w, h = img.size
+
+        # Bild proportional in das Quadrat einpassen
+        scale = min(target_size / w, target_size / h)
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        resized = img.resize((new_w, new_h), Image.LANCZOS)
+
+        # NumPy-Array für Pixel-Replikation
+        arr = np.array(resized)
+
+        # Vertikales Padding (oben/unten) – oberste/unterste Zeile replizieren
+        pad_top = (target_size - new_h) // 2
+        pad_bottom = target_size - new_h - pad_top
+
+        if pad_top > 0:
+            top_row = arr[0:1, :, :]  # Form: (1, W, 3)
+            top_fill = np.repeat(top_row, pad_top, axis=0)
+            arr = np.concatenate([top_fill, arr], axis=0)
+        if pad_bottom > 0:
+            bottom_row = arr[-1:, :, :]  # Form: (1, W, 3)
+            bottom_fill = np.repeat(bottom_row, pad_bottom, axis=0)
+            arr = np.concatenate([arr, bottom_fill], axis=0)
+
+        # Horizontales Padding (links/rechts) – äußerste Spalte replizieren
+        pad_left = (target_size - new_w) // 2
+        pad_right = target_size - new_w - pad_left
+
+        if pad_left > 0:
+            left_col = arr[:, 0:1, :]  # Form: (H, 1, 3)
+            left_fill = np.repeat(left_col, pad_left, axis=1)
+            arr = np.concatenate([left_fill, arr], axis=1)
+        if pad_right > 0:
+            right_col = arr[:, -1:, :]  # Form: (H, 1, 3)
+            right_fill = np.repeat(right_col, pad_right, axis=1)
+            arr = np.concatenate([arr, right_fill], axis=1)
+
+        return Image.fromarray(arr)
+
+    def crop_to_square(self, img, target_size=600):
+        """Center-Crop: Bild links und rechts gleichmäßig abschneiden,
+        sodass es quadratisch wird, dann auf target_size skalieren.
+        """
+        w, h = img.size
+        if w > h:
+            # Breiter als hoch → links und rechts abschneiden
+            offset = (w - h) // 2
+            img = img.crop((offset, 0, offset + h, h))
+        elif h > w:
+            # Höher als breit → oben und unten abschneiden
+            offset = (h - w) // 2
+            img = img.crop((0, offset, w, offset + w))
+        # Jetzt ist das Bild quadratisch → auf Zielgröße skalieren
+        return img.resize((target_size, target_size), Image.LANCZOS)
+
     def preprocess_image(self, file_path):
         """Bild laden und durch die Vorverarbeitung führen:
-        1. Auf Kamera-Auflösung skalieren (CAMERA_X × CAMERA_Y)
-        2. Per Blur-Padding auf 600x600 bringen
+        2. Je nach gewähltem Padding-Modus auf 600x600 bringen
         """
         img = Image.open(file_path).convert('RGB')
-        # Schritt 1: Auf Kamera-Auflösung skalieren
-        img = img.resize((self.CAMERA_X, self.CAMERA_Y), Image.LANCZOS)
-        # Schritt 2: Blur-Padding auf 600x600
-        img = self.blur_pad_to_square(img, target_size=600)
+        
+        # Schritt 2: Padding-Modus anwenden
+        mode = self.padding_var.get()
+        if mode == "Resize 600x600":
+            img = self.resize_to_square(img, target_size=600)
+        elif mode == "Replicate / Edge-Padding":
+            img = self.edge_pad_to_square(img, target_size=600)
+        elif mode == "Center-Crop (quadratisch)":
+            img = self.crop_to_square(img, target_size=600)
+        else:
+            # Standard: Blur-Padding
+            img = self.blur_pad_to_square(img, target_size=600)
         return img
 
     def load_and_classify(self):
