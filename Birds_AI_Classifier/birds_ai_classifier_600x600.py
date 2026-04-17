@@ -2165,6 +2165,15 @@ class BirdAppController:
             if self.settings.get("greylist_active", True): infos.append(f"Greylist ({len(self.greylist)} Arten)")
             info_str = ", ".join(infos) if infos else "Nur Erkennung"
             self.update_log(f"Service gestartet: {info_str}")
+            # Bildbearbeitungsmodus im Log anzeigen
+            mode_labels = {
+                "blur": "Blur-Padding",
+                "resize": "Hartes Resize (600×600)",
+                "edge": "Replicate / Edge-Padding",
+                "crop": "Center-Crop"
+            }
+            mode_display = mode_labels.get(PADDING_MODE, PADDING_MODE)
+            self.update_log(f"Modus Bildbearbeitung: {mode_display}")
             return True
         return False
         
