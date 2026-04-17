@@ -2,7 +2,7 @@ import os
 import json
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageFilter
 import numpy as np
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -15,10 +15,12 @@ class BirdAITesterApp:
     # =====================================================================
     # Kamera-Auflösung einstellen (Breite x Höhe in Pixel)
     # Das eingehende Bild wird zuerst auf diese Größe skaliert,
-    # dann quadratisch gepaddet und auf 600x600 für das Modell gebracht.
+    # dann per Blur-Padding quadratisch auf 600x600 gebracht.
     # =====================================================================
     CAMERA_X = 800   # Breite der Kamera in Pixel
     CAMERA_Y = 448   # Höhe der Kamera in Pixel
+    # =====================================================================
+    BLUR_RADIUS = 40  # Stärke des Gaussian Blur für den Hintergrund
     # =====================================================================
 
     def __init__(self, root):
@@ -72,36 +74,46 @@ class BirdAITesterApp:
             self.lbl_status.config(text=f"Fehler beim Laden: {str(e)}", fg="red")
             messagebox.showerror("Fehler", f"Fehler bei der Initialisierung:\n{str(e)}")
 
-    def pad_to_square(self, img):
-        """Bild auf ein Quadrat padden (längste Seite bestimmt Größe).
+    def blur_pad_to_square(self, img, target_size=600):
+        """Blur-Padding: Bild quadratisch machen mit unscharfem Hintergrund.
         
-        Das Originalbild bleibt komplett erhalten. Auf der kürzeren Seite
-        werden symmetrisch schwarze Balken hinzugefügt, bis das Bild
-        quadratisch ist.
+        Wie bei TV-Dokumentationen, wenn ein Hochkant-Video gezeigt wird:
+        Der Hintergrund ist eine stark weichgezeichnete, aufgeblasene Version
+        des Originalbildes. Das skalierte Original wird mittig darübergelegt.
+        So entstehen keine harten Kanten, nur natürliche Farben.
         """
         w, h = img.size
-        max_side = max(w, h)
-        # Neues schwarzes (0,0,0) Quadrat erstellen
-        square_img = Image.new('RGB', (max_side, max_side), (0, 0, 0))
-        # Originalbild mittig einfügen
-        offset_x = (max_side - w) // 2
-        offset_y = (max_side - h) // 2
-        square_img.paste(img, (offset_x, offset_y))
-        return square_img
+
+        # Schritt 1: Hintergrund erstellen – Originalbild auf Zielgröße
+        #            aufblasen (verzerrt, füllt das gesamte Quadrat)
+        background = img.resize((target_size, target_size), Image.LANCZOS)
+
+        # Schritt 2: Starken Gaussian Blur auf den Hintergrund legen
+        background = background.filter(ImageFilter.GaussianBlur(radius=self.BLUR_RADIUS))
+
+        # Schritt 3: Originalbild proportional in das Quadrat einpassen
+        scale = min(target_size / w, target_size / h)
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        foreground = img.resize((new_w, new_h), Image.LANCZOS)
+
+        # Schritt 4: Vordergrundbild mittig auf den unscharfen Hintergrund legen
+        offset_x = (target_size - new_w) // 2
+        offset_y = (target_size - new_h) // 2
+        background.paste(foreground, (offset_x, offset_y))
+
+        return background
 
     def preprocess_image(self, file_path):
-        """Bild laden und durch die komplette Vorverarbeitung führen:
+        """Bild laden und durch die Vorverarbeitung führen:
         1. Auf Kamera-Auflösung skalieren (CAMERA_X × CAMERA_Y)
-        2. Quadratisch padden (schwarze Balken)
-        3. Auf 600x600 für das Modell skalieren
+        2. Per Blur-Padding auf 600x600 bringen
         """
         img = Image.open(file_path).convert('RGB')
         # Schritt 1: Auf Kamera-Auflösung skalieren
         img = img.resize((self.CAMERA_X, self.CAMERA_Y), Image.LANCZOS)
-        # Schritt 2: Quadratisch padden
-        img = self.pad_to_square(img)
-        # Schritt 3: Auf 600x600 skalieren
-        img = img.resize((600, 600), Image.LANCZOS)
+        # Schritt 2: Blur-Padding auf 600x600
+        img = self.blur_pad_to_square(img, target_size=600)
         return img
 
     def load_and_classify(self):
@@ -120,7 +132,7 @@ class BirdAITesterApp:
         self.lbl_status.config(text=f"Verarbeite: {os.path.basename(file_path)}", fg="blue")
         self.root.update()
         
-        # Bild vorverarbeiten (Kamera-Resize → Pad → 600x600)
+        # Bild vorverarbeiten (Kamera-Resize → Blur-Padding → 600x600)
         try:
             processed_img = self.preprocess_image(file_path)
         except Exception as e:

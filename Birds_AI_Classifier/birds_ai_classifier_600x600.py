@@ -19,7 +19,7 @@ import requests
 import platform
 
 # --- NEU: Pillow für EXIF-Daten ---
-from PIL import Image, ExifTags
+from PIL import Image, ExifTags, ImageFilter
 
 # --- NEU: Production Server Import ---
 from waitress import serve
@@ -73,13 +73,16 @@ MASK_BOTTOM = 0
 
 # --- KAMERA AUFLÖSUNG ---
 # Hier die Abmaße des ankommenden Kamerabildes einstellen.
-# Das Bild wird mit schwarzen Balken zu einem Quadrat ergänzt (Letterboxing),
+# Das Bild wird per Blur-Padding zu einem Quadrat ergänzt,
 # damit kein Bildinhalt abgeschnitten wird, bevor es auf die Modell-Größe skaliert wird.
 CAMERA_X_AXIS = 800   # Breite des Kamerabildes in Pixel
 CAMERA_Y_AXIS = 448   # Höhe des Kamerabildes in Pixel
 
 # --- MODELL ZIELGRÖSSE ---
-MODEL_TARGET_SIZE = 00  # Das trainierte Modell erwartet 600x600 Pixel
+MODEL_TARGET_SIZE = 600  # Das trainierte Modell erwartet 600x600 Pixel
+
+# --- BLUR-PADDING ---
+BLUR_RADIUS = 40  # Stärke des Gaussian Blur für den Hintergrund
 
 # --- DEBUG: Bildbearbeitung Ergebnis speichern ---
 # Wenn True, wird das fertig bearbeitete Bild (nach Letterboxing, Resize und Masking)
@@ -349,29 +352,39 @@ class BirdAI:
     @staticmethod
     def prepare_image_for_model(img_path):
         """
-        Lädt ein Bild, bringt es auf die konfigurierte Kamera-Auflösung,
-        ergänzt es mit schwarzen Balken (Letterboxing/Pillarboxing) zu einem Quadrat
-        anhand der längsten Seite und skaliert es auf MODEL_TARGET_SIZE x MODEL_TARGET_SIZE.
+        Lädt ein Bild, bringt es auf die konfigurierte Kamera-Auflösung
+        und erstellt per Blur-Padding ein quadratisches Bild.
         
-        Vorteil: Das komplette Bildmaterial bleibt erhalten, nichts wird abgeschnitten.
+        Blur-Padding: Der Hintergrund ist eine stark weichgezeichnete,
+        aufgeblasene Version des Originalbildes. Das skalierte Original
+        wird mittig darübergelegt – wie bei TV-Dokumentationen mit
+        Hochkant-Videos. Keine harten Kanten, nur natürliche Farben.
         """
         # Bild laden und auf Kamera-Auflösung bringen
         img = Image.open(img_path).convert('RGB')
         img = img.resize((CAMERA_X_AXIS, CAMERA_Y_AXIS), Image.LANCZOS)
         
-        # Quadrat erstellen anhand der längsten Seite
-        longest_side = max(CAMERA_X_AXIS, CAMERA_Y_AXIS)
-        square_img = Image.new('RGB', (longest_side, longest_side), (0, 0, 0))  # Schwarzer Hintergrund
+        target_size = MODEL_TARGET_SIZE
+        w, h = img.size
         
-        # Bild zentriert einfügen (schwarze Balken oben/unten oder links/rechts)
-        paste_x = (longest_side - CAMERA_X_AXIS) // 2
-        paste_y = (longest_side - CAMERA_Y_AXIS) // 2
-        square_img.paste(img, (paste_x, paste_y))
+        # Schritt 1: Hintergrund – Originalbild auf Zielgröße aufblasen (verzerrt)
+        background = img.resize((target_size, target_size), Image.LANCZOS)
         
-        # Auf Modell-Zielgröße skalieren
-        final_img = square_img.resize((MODEL_TARGET_SIZE, MODEL_TARGET_SIZE), Image.LANCZOS)
+        # Schritt 2: Starken Gaussian Blur auf den Hintergrund legen
+        background = background.filter(ImageFilter.GaussianBlur(radius=BLUR_RADIUS))
         
-        return final_img
+        # Schritt 3: Originalbild proportional in das Quadrat einpassen
+        scale = min(target_size / w, target_size / h)
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        foreground = img.resize((new_w, new_h), Image.LANCZOS)
+        
+        # Schritt 4: Vordergrundbild mittig auf den unscharfen Hintergrund legen
+        offset_x = (target_size - new_w) // 2
+        offset_y = (target_size - new_h) // 2
+        background.paste(foreground, (offset_x, offset_y))
+        
+        return background
 
     def analyze_image(self, img_path):
         try:
