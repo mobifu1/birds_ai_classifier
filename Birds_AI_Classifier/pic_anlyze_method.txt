@@ -1,0 +1,8 @@
+Ich habe die gewünschten Änderungen in der Datei birds_ai_classifier_600x600.py erfolgreich durchgeführt.
+
+Folgendes wurde umgesetzt:
+Aufteilen in drei quadratische Bilder, es lädt das Bild nun und teilt es (bei Querformat/Kamerabild) horizontal in drei überlappende Teilquadrate auf: Links, Mitte, Rechts
+Diese Zuschnitte basieren auf der Höhe des Bildes, wodurch garantiert quadratische Ausschnitte ohne Verzerrung entstehen.
+
+Einzel-Klassifizierung & Resize:
+Jedes dieser drei Teile wird nun auf exakt 600x600 skaliert und nacheinander dem KI-Modell zur Bewertung weitergegeben. Auch für die Ansicht zu Debugging-Zwecken werden jetzt alle drei Einzelbilder in dem Ordner debug_live_masking mit entsprechendem Teil-Namen abgespeichert (z.B. debug_links_bild.jpg). Das Ergebnis mit der höchsten Treffer-Wahrscheinlichkeit der drei Einzelbilder (Highest Confidence) wird anschließend als das finale Klassifizierungsergebnis des Bildes zurückgegeben und wie gewohnt in die Liste eingetragen.

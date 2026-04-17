@@ -2070,14 +2070,7 @@ class BirdAppController:
             info_str = ", ".join(infos) if infos else "Nur Erkennung"
             self.update_log(f"Service gestartet: {info_str}")
             # Bildbearbeitungsmodus im Log anzeigen
-            mode_labels = {
-                "blur": "Blur-Padding",
-                "resize": "Hartes Resize (600×600)",
-                "edge": "Replicate / Edge-Padding",
-                "crop": "Center-Crop"
-            }
-            mode_display = mode_labels.get(PADDING_MODE, PADDING_MODE)
-            self.update_log(f"Modus Bildbearbeitung: {mode_display}")
+            self.update_log("Modus Bildbearbeitung: 3-fach Split (Links, Mitte, Rechts)")
             return True
         return False
         
