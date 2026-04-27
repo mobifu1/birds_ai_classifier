@@ -58,3 +58,15 @@ Hat das Bild auch die Greylist überstanden, kommt ganz zum Schluss die Blacklis
 
 9. Final
 Hat das Bild alles überlebt wird es in der Datenbank eingetragen.
+
+Online Check:
+Gemini wird nur gefragt, wenn sowohl die Konfidenz unter dem Schwellwert liegt als auch der Vorsprung nicht ausreicht.
+Der Vorsprung hat also Vorrang vor Gemini.
+
+Konfidenz	Vorsprung	Ergebnis
+< Vermutung	egal	→ Unbekannt
+≥ Vermutung, < Konfidenz	Vorsprung ausreichend	→ Akzeptiert (kein Gemini)
+≥ Vermutung, < Konfidenz	Vorsprung nicht ausreichend	→ Gemini wird gefragt 🌐
+≥ Konfidenz	egal	→ Akzeptiert (kein Gemini)
+
+
