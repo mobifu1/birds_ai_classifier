@@ -370,10 +370,10 @@ class BirdAI:
         """
         Sendet das Bild an die Gemini Vision API zur Verifizierung.
         Die Antwort wird auf die erlaubten Labels aus model_labels.json beschränkt.
-        Gibt (species, confidence) zurück oder (None, 0.0) bei Fehler.
+        Gibt (species, confidence, raw_answer) zurück oder (None, 0.0, error_msg) bei Fehler.
         """
         if not self.gemini_api_key:
-            return None, 0.0
+            return None, 0.0, "Kein API-Key"
 
         try:
             # Bild als Base64 kodieren
@@ -390,7 +390,7 @@ class BirdAI:
                 f"Du darfst NUR eine der folgenden Arten als Antwort geben: {labels_str}. "
                 f"Falls du das Tier nicht eindeutig einer dieser Arten zuordnen kannst, "
                 f"antworte mit 'Unbekannt'. "
-                f"Antworte NUR mit dem Artnamen, NICHTS anderes. Kein Satz, keine Erklärung."
+                f"Antworte NUR mit dem einzelnen Artnamen, NICHTS anderes. Kein Satz, keine Erklärung, kein Punkt."
             )
 
             # Gemini API Aufruf (gemini-2.0-flash mit Vision)
@@ -417,8 +417,9 @@ class BirdAI:
             response = requests.post(url, json=payload, timeout=15)
 
             if response.status_code != 200:
-                print(f"❌ Gemini API Fehler (HTTP {response.status_code}): {response.text[:200]}")
-                return None, 0.0
+                error_msg = f"HTTP {response.status_code}"
+                print(f"❌ Gemini API Fehler ({error_msg}): {response.text[:200]}")
+                return None, 0.0, error_msg
 
             result = response.json()
 
@@ -427,36 +428,46 @@ class BirdAI:
                 gemini_answer = result["candidates"][0]["content"]["parts"][0]["text"].strip()
             except (KeyError, IndexError):
                 print(f"⚠️ Gemini Antwort konnte nicht geparst werden: {result}")
-                return None, 0.0
+                return None, 0.0, "Parse-Fehler"
+
+            # Antwort bereinigen: Punkte, Anführungszeichen, Zeilenumbrüche entfernen
+            gemini_clean = gemini_answer.strip().strip('.').strip('"').strip("'").strip()
 
             # Antwort validieren: Muss in der Labelliste sein
-            # Vergleiche case-insensitive und mit Varianten (Titel/Original)
             matched_label = None
             for label in self.allowed_labels:
-                if gemini_answer.lower() == label.lower():
+                # Exakter Vergleich (case-insensitive)
+                if gemini_clean.lower() == label.lower():
                     matched_label = label
                     break
-                # Auch mit Leerzeichen statt Underscore vergleichen
-                if gemini_answer.lower() == label.replace('_', ' ').lower():
+                # Mit Leerzeichen statt Underscore
+                if gemini_clean.lower() == label.replace('_', ' ').lower():
                     matched_label = label
                     break
+            
+            # Fallback: Enthält die Antwort einen bekannten Labelnamen?
+            if not matched_label:
+                for label in self.allowed_labels:
+                    if label.lower() in gemini_clean.lower():
+                        matched_label = label
+                        break
 
             if matched_label and matched_label.lower() != "unbekannt":
-                print(f"🌐 Gemini Ergebnis: {matched_label}")
-                return matched_label, 0.95  # Hohe Confidence für Gemini-Verifizierung
-            elif gemini_answer.lower() == "unbekannt":
-                print(f"🌐 Gemini: Konnte Art nicht bestimmen (Unbekannt)")
-                return "Unbekannt", 0.0
+                print(f"🌐 Gemini Ergebnis: {matched_label} (Rohantwort: '{gemini_answer}')")
+                return matched_label, 0.95, gemini_answer
+            elif "unbekannt" in gemini_clean.lower():
+                print(f"🌐 Gemini: Unbekannt (Rohantwort: '{gemini_answer}')")
+                return "Unbekannt", 0.0, gemini_answer
             else:
                 print(f"⚠️ Gemini Antwort '{gemini_answer}' ist nicht in der Labelliste. Wird ignoriert.")
-                return None, 0.0
+                return None, 0.0, gemini_answer
 
         except requests.exceptions.Timeout:
             print("⚠️ Gemini API Timeout (15s). Online-Check übersprungen.")
-            return None, 0.0
+            return None, 0.0, "Timeout"
         except Exception as e:
             print(f"❌ Fehler bei Gemini Online-Check: {e}")
-            return None, 0.0
+            return None, 0.0, str(e)
 
     def load_standard_model(self):
         self.use_custom = False
@@ -780,24 +791,7 @@ class FolderMonitor:
                 margin_accepted = False
                 gemini_override = False
                 if conf_percent < current_guess_threshold:
-                    # --- GEMINI ONLINE CHECK (bei sehr niedriger Konfidenz) ---
-                    if ONLINE_CHECK and self.ai.gemini_api_key:
-                        self.log_callback(f"[{file_path.name}] 🌐 Konfidenz zu niedrig ({conf_percent}%). Frage Gemini...")
-                        gemini_species, gemini_conf = self.ai.gemini_verify(str(file_path))
-                        if gemini_species and gemini_species.lower() != "unbekannt":
-                            species = gemini_species.replace(' ', '_').replace(' ', '_')
-                            conf = gemini_conf
-                            conf_percent = int(conf * 100)
-                            conf2 = 0.0
-                            conf2_percent = 0
-                            margin_percent = conf_percent
-                            gemini_override = True
-                            self.log_callback(f"[{file_path.name}] 🌐 Gemini erkennt: {species} ({conf_percent}%) -> Überstimmt lokales Ergebnis")
-                        else:
-                            species = "Unbekannt"
-                            self.log_callback(f"[{file_path.name}] 🌐 Gemini konnte auch nicht helfen -> Unbekannt")
-                    else:
-                        species = "Unbekannt"
+                    species = "Unbekannt"
                 elif conf_percent < current_threshold:
                     current_margin_threshold = self.get_margin_threshold()
                     if margin_percent >= current_margin_threshold:
@@ -809,7 +803,7 @@ class FolderMonitor:
                         if ONLINE_CHECK and self.ai.gemini_api_key:
                             top1_species = species.replace(" ", "_")
                             self.log_callback(f"[{file_path.name}] 🌐 Unsicher ({top1_species} {conf_percent}%). Frage Gemini...")
-                            gemini_species, gemini_conf = self.ai.gemini_verify(str(file_path))
+                            gemini_species, gemini_conf, raw_answer = self.ai.gemini_verify(str(file_path))
                             if gemini_species and gemini_species.lower() != "unbekannt":
                                 species = gemini_species.replace(' ', '_').replace(' ', '_')
                                 conf = gemini_conf
@@ -821,7 +815,7 @@ class FolderMonitor:
                                 self.log_callback(f"[{file_path.name}] 🌐 Gemini erkennt: {species} ({conf_percent}%) -> Überstimmt lokales Ergebnis")
                             else:
                                 species = "Vermutung"
-                                self.log_callback(f"[{file_path.name}] 🤔 Vermutung ({top1_species} {conf_percent}%) - Gemini konnte nicht helfen")
+                                self.log_callback(f"[{file_path.name}] 🤔 Vermutung ({top1_species} {conf_percent}%) - Gemini: '{raw_answer}'")
                         else:
                             top1_species = species.replace(" ", "_")
                             species = "Vermutung"
