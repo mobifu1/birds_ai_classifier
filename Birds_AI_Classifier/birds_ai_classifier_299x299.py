@@ -652,12 +652,14 @@ class FolderMonitor:
                 timestamp = get_original_date(str(file_path))
                 
                 # 1. Classification (Unbekannt oder Klasse)
+                margin_accepted = False
                 if conf_percent < current_guess_threshold:
                     species = "Unbekannt"
                 elif conf_percent < current_threshold:
                     current_margin_threshold = self.get_margin_threshold()
                     if margin_percent >= current_margin_threshold:
                         species = species.replace(" ", "_")
+                        margin_accepted = True
                         self.log_callback(f"[{file_path.name}] 🎯 Vorsprung reicht ({margin_percent}%), akzeptiert als: {species}")
                     else:
                         top1_species = species.replace(" ", "_")
@@ -824,7 +826,7 @@ class FolderMonitor:
                 
                 # 6. Blacklist
                 is_blacklisted = (species in current_blacklist) 
-                should_delete_trash = delete_unsure_active and conf_percent < current_threshold
+                should_delete_trash = delete_unsure_active and conf_percent < current_threshold and not margin_accepted
                 if is_blacklisted or should_delete_trash:
                     try:
                         if os.path.exists(file_path):
