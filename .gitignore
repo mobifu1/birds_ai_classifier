@@ -23,3 +23,4 @@ wiki/
 debug_log.txt
 weather_config.json
 action_config.json
+gemini_config.json
