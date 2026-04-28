@@ -1,0 +1,7 @@
+pip install ultralytics
+
+Die App kann über einen Button eine .jpeg datei (800x448px) öffnen.
+Die Aufgabe der App ist, den Vogel auf einem Bild, ohne Verzerrungen quadratisch auszuschneiden und so wenig wie möglich vom Hintergrund mitzunehmen.
+Wenn kein Vogel auf dem Bild vorhanden sein sollte, muss die App das ebenfalls auf der GUI melden.
+Das Bild-Ergebnis des freigestellten Vogels soll anschließend auf der GUI dargestellt werden und über einen weiteren Button im Ordner meiner Wahl abgespeichert werden können.
+
