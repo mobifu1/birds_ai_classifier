@@ -90,7 +90,7 @@ YOLO_CONFIDENCE_THRESHOLD = 0.3 # Mindest-Konfidenz für die Vogel-Erkennung
 # zur Verifizierung des Ergebnisses befragt. Die Antwort wird auf die Labels aus
 # model_labels.json beschränkt. Benötigt einen API-Key in gemini_config.json.
 # Format der gemini_config.json: {"api_key": "DEIN_GEMINI_API_KEY"}
-ONLINE_CHECK = True
+ONLINE_CHECK = False
 
 # --- DEBUG: Bildbearbeitung Ergebnis speichern ---
 # Wenn True, wird das fertig bearbeitete Bild (nach Letterboxing, Resize und Masking)
