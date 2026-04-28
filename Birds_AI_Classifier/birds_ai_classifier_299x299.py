@@ -21,6 +21,9 @@ import platform
 # --- NEU: Pillow für EXIF-Daten ---
 from PIL import Image, ExifTags, ImageFilter
 
+# --- NEU: YOLOv8 für Vogel-Erkennung (Supercut) ---
+from ultralytics import YOLO
+
 # --- NEU: Production Server Import ---
 from waitress import serve
 
@@ -72,12 +75,15 @@ last_weather_temp = None
 MASK_TOP = 0  
 MASK_BOTTOM = 0
 
-# --- KAMERA AUFLÖSUNG ---
-# Das Bild wird in 3 quadratische Teile (links, mitte, rechts) aufgeteilt,
-# die jeweils auf die Modell-Größe skaliert und analysiert werden.
-
 # --- MODELL ZIELGRÖSSE ---
 MODEL_TARGET_SIZE = 299  # Das trainierte Modell erwartet 299x299 Pixel
+
+# --- YOLO SUPERCUT PARAMETER ---
+# YOLOv8 erkennt Vögel auf dem Kamerabild (800x448) und schneidet
+# den Vogel quadratisch aus, bevor er dem Classifier übergeben wird.
+YOLO_MODEL_NAME = "yolov8n.pt"  # Nano-Modell (schnell, ~6MB, wird beim 1. Start heruntergeladen)
+YOLO_BIRD_CLASS_ID = 14         # COCO-Klasse 14 = 'bird'
+YOLO_CONFIDENCE_THRESHOLD = 0.3 # Mindest-Konfidenz für die Vogel-Erkennung
 
 # --- GEMINI ONLINE CHECK ---
 # Wenn True, wird nach der lokalen KI-Klassifizierung zusätzlich Gemini Vision API
@@ -326,6 +332,11 @@ class BirdAI:
         self.use_custom = False
         self.labels_map = {}
         self.model = None
+
+        # YOLOv8-Modell für Supercut laden
+        print("Lade YOLOv8-Modell für Vogel-Erkennung (Supercut)...")
+        self.yolo_model = YOLO(YOLO_MODEL_NAME)
+        print("✅ YOLOv8-Modell geladen.")
         self.gemini_api_key = None
         self.allowed_labels = []
 
@@ -479,82 +490,166 @@ class BirdAI:
             'black_grouse': 'Birkhuhn', 'jay': 'Eichelhäher'
         }
 
+    def _supercut_bird(self, img):
+        """
+        Erkennt einen Vogel im Bild mit YOLOv8 und schneidet ihn
+        quadratisch aus (Supercut). Gibt das quadratische PIL-Image
+        zurück oder None, wenn kein Vogel erkannt wurde.
+        """
+        # YOLOv8 Inferenz
+        results = self.yolo_model(img, verbose=False)
+
+        # Alle erkannten Vögel filtern
+        bird_detections = []
+        for result in results:
+            boxes = result.boxes
+            for i in range(len(boxes)):
+                cls_id = int(boxes.cls[i].item())
+                conf = float(boxes.conf[i].item())
+                if cls_id == YOLO_BIRD_CLASS_ID and conf >= YOLO_CONFIDENCE_THRESHOLD:
+                    x1, y1, x2, y2 = boxes.xyxy[i].tolist()
+                    bird_detections.append({
+                        "bbox": (x1, y1, x2, y2),
+                        "confidence": conf
+                    })
+
+        if not bird_detections:
+            return None
+
+        # Den Vogel mit der höchsten Konfidenz auswählen
+        best = max(bird_detections, key=lambda d: d["confidence"])
+        x1, y1, x2, y2 = best["bbox"]
+        yolo_conf = best["confidence"]
+
+        img_w, img_h = img.size
+
+        # Bounding-Box Abmessungen
+        bbox_w = x2 - x1
+        bbox_h = y2 - y1
+
+        # Quadrat-Seitenlänge = längere Seite der Bounding-Box + 5% Rand
+        side = max(bbox_w, bbox_h)
+        margin = side * 0.05
+        side = side + 2 * margin
+
+        # Maximale Seitenlänge begrenzen auf die kürzere Bildseite
+        side = min(side, img_w, img_h)
+
+        # Mittelpunkt der Bounding-Box
+        cx = (x1 + x2) / 2
+        cy = (y1 + y2) / 2
+
+        # Quadrat zentriert um den Mittelpunkt
+        crop_x1 = cx - side / 2
+        crop_y1 = cy - side / 2
+        crop_x2 = cx + side / 2
+        crop_y2 = cy + side / 2
+
+        # Sicherstellen, dass das Quadrat im Bild liegt
+        if crop_x1 < 0:
+            crop_x2 -= crop_x1
+            crop_x1 = 0
+        if crop_y1 < 0:
+            crop_y2 -= crop_y1
+            crop_y1 = 0
+        if crop_x2 > img_w:
+            crop_x1 -= (crop_x2 - img_w)
+            crop_x2 = img_w
+        if crop_y2 > img_h:
+            crop_y1 -= (crop_y2 - img_h)
+            crop_y2 = img_h
+
+        # Sicherheitscheck
+        crop_x1 = max(0, crop_x1)
+        crop_y1 = max(0, crop_y1)
+        crop_x2 = min(img_w, crop_x2)
+        crop_y2 = min(img_h, crop_y2)
+
+        # Integer-Koordinaten
+        crop_x1 = int(round(crop_x1))
+        crop_y1 = int(round(crop_y1))
+        crop_x2 = int(round(crop_x2))
+        crop_y2 = int(round(crop_y2))
+
+        # Exakt quadratisch machen (Rundungsfehler ausgleichen)
+        final_w = crop_x2 - crop_x1
+        final_h = crop_y2 - crop_y1
+        if final_w != final_h:
+            final_side = min(final_w, final_h)
+            crop_x2 = crop_x1 + final_side
+            crop_y2 = crop_y1 + final_side
+
+        bird_crop = img.crop((crop_x1, crop_y1, crop_x2, crop_y2))
+        try:
+            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(DEBUG_FILE, "a", encoding="utf-8") as f:
+                f.write(f"[{ts}] 🐦 Supercut: Vogel erkannt (YOLO {yolo_conf:.0%}), Ausschnitt {bird_crop.size[0]}x{bird_crop.size[1]}px\n")
+        except Exception:
+            pass
+        return bird_crop
+
     def analyze_image(self, img_path):
         try:
-            # Bild laden
+            # 1. Bild laden
             img = Image.open(img_path).convert('RGB')
-            w, h = img.size
             target_size = MODEL_TARGET_SIZE
-            
-            # Bild in 3 quadratische Teile (links, mitte, rechts) aufteilen
-            if w > h:
-                crop_size = h
-                left_img = img.crop((0, 0, crop_size, crop_size))
-                mid_img = img.crop(((w - crop_size) // 2, 0, (w + crop_size) // 2, crop_size))
-                right_img = img.crop((w - crop_size, 0, w, crop_size))
+
+            # 2. Supercut: Vogel mit YOLOv8 erkennen und quadratisch ausschneiden
+            bird_img = self._supercut_bird(img)
+
+            if bird_img is None:
+                # Kein Vogel erkannt -> "Unbekannt"
+                try:
+                    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    with open(DEBUG_FILE, "a", encoding="utf-8") as f:
+                        f.write(f"[{ts}] ⚠ Supercut: Kein Vogel erkannt auf {os.path.basename(img_path)}\n")
+                except Exception:
+                    pass
+                return "Unbekannt", 0.0, 0.0
+
+            # 3. Quadratischen Ausschnitt auf Modell-Größe skalieren
+            bird_resized = bird_img.resize((target_size, target_size), Image.LANCZOS)
+            x = tf_image.img_to_array(bird_resized)
+
+            # Masking anwenden
+            x[:MASK_TOP, :, :] = 0
+            img_h = x.shape[0]
+            if MASK_BOTTOM > 0:
+                x[img_h-MASK_BOTTOM:, :, :] = 0
+
+            # --- DEBUG: Bearbeitetes Bild speichern ---
+            if debug_result_bildbearbeitung:
+                try:
+                    debug_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_live_masking")
+                    os.makedirs(debug_dir, exist_ok=True)
+                    debug_img = Image.fromarray(x.astype('uint8'))
+                    debug_filename = f"debug_supercut_{os.path.basename(img_path)}"
+                    debug_img.save(os.path.join(debug_dir, debug_filename))
+                except Exception as e:
+                    print(f"Debug-Bild konnte nicht gespeichert werden: {e}")
+
+            # 4. Classifier: Vogelart bestimmen
+            x = np.expand_dims(x, axis=0)
+            x = preprocess_input(x)
+
+            preds = self.model.predict(x, verbose=0)
+
+            if self.use_custom:
+                sorted_indices = np.argsort(preds[0])[::-1]
+                best_index = sorted_indices[0]
+                confidence = float(preds[0][best_index])
+                confidence2 = float(preds[0][sorted_indices[1]]) if len(preds[0]) > 1 else 0.0
+                label_name = self.labels_map.get(best_index, "Unbekannt")
+                species = label_name.replace('_', ' ').title()
             else:
-                # Fallback, falls das Bild nicht im Querformat ist
-                crop_size = w
-                left_img = img.crop((0, 0, crop_size, crop_size))
-                mid_img = img.crop((0, (h - crop_size) // 2, crop_size, (h + crop_size) // 2))
-                right_img = img.crop((0, h - crop_size, crop_size, h))
-                
-            parts = [left_img, mid_img, right_img]
-            part_names = ["links", "mitte", "rechts"]
-            
-            best_species = "Unbekannt"
-            best_conf = 0.0
-            best_conf2 = 0.0
+                results = decode_predictions(preds, top=2)[0]
+                english_label = results[0][1]
+                confidence = float(results[0][2])
+                confidence2 = float(results[1][2]) if len(results) > 1 else 0.0
+                translated_label = self.translations.get(english_label, english_label)
+                species = translated_label.replace('_', ' ').title()
 
-            for i, part in enumerate(parts):
-                # Teil auf 299x299 (bzw. MODEL_TARGET_SIZE) rezisen
-                part_resized = part.resize((target_size, target_size), Image.LANCZOS)
-                x = tf_image.img_to_array(part_resized)
-                
-                # Masking anwenden
-                x[:MASK_TOP, :, :] = 0
-                img_h = x.shape[0]
-                if MASK_BOTTOM > 0:
-                    x[img_h-MASK_BOTTOM:, :, :] = 0
-
-                # --- DEBUG: Bearbeitetes Bild speichern ---
-                if debug_result_bildbearbeitung:
-                    try:
-                        debug_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_live_masking")
-                        os.makedirs(debug_dir, exist_ok=True)
-                        debug_img = Image.fromarray(x.astype('uint8'))
-                        debug_filename = f"debug_{part_names[i]}_{os.path.basename(img_path)}"
-                        debug_img.save(os.path.join(debug_dir, debug_filename))
-                    except Exception as e:
-                        print(f"Debug-Bild {part_names[i]} konnte nicht gespeichert werden: {e}")
-
-                x = np.expand_dims(x, axis=0)
-                x = preprocess_input(x)
-                
-                preds = self.model.predict(x, verbose=0)
-
-                if self.use_custom:
-                    sorted_indices = np.argsort(preds[0])[::-1]
-                    best_index = sorted_indices[0]
-                    confidence = float(preds[0][best_index])
-                    confidence2 = float(preds[0][sorted_indices[1]]) if len(preds[0]) > 1 else 0.0
-                    label_name = self.labels_map.get(best_index, "Unbekannt")
-                    species = label_name.replace('_', ' ').title()
-                else:
-                    results = decode_predictions(preds, top=2)[0]
-                    english_label = results[0][1]
-                    confidence = float(results[0][2])
-                    confidence2 = float(results[1][2]) if len(results) > 1 else 0.0
-                    translated_label = self.translations.get(english_label, english_label)
-                    species = translated_label.replace('_', ' ').title()
-                    
-                # Bestes Ergebnis speichern
-                if confidence > best_conf:
-                    best_conf = confidence
-                    best_conf2 = confidence2
-                    best_species = species
-
-            return best_species, best_conf, best_conf2
+            return species, confidence, confidence2
         except Exception as e:
             return "Fehler", 0.0
 
@@ -620,7 +715,15 @@ class FolderMonitor:
         self.running = True
         
         # NEU: Lese- und Schreibrechte prüfen und protokollieren
-        has_read = os.access(self.folder_path, os.R_OK)
+        # os.access(R_OK) ist auf Windows unzuverlässig, daher echter Test mit os.listdir()
+        has_read = False
+        try:
+            os.listdir(self.folder_path)
+            has_read = True
+        except PermissionError:
+            has_read = False
+        except Exception:
+            has_read = True  # Ordner existiert und ist lesbar, aber evtl. leer
         has_write = False
         try:
             test_file = os.path.join(self.folder_path, '.permission_test')
@@ -2227,7 +2330,7 @@ class BirdAppController:
             info_str = ", ".join(infos) if infos else "Nur Erkennung"
             self.update_log(f"Service gestartet: {info_str}")
             # Bildbearbeitungsmodus im Log anzeigen
-            self.update_log("Modus Bildbearbeitung: 3-fach Split (Links, Mitte, Rechts)")
+            self.update_log("Modus Bildbearbeitung: YOLOv8 Supercut (Vogel-Erkennung + quadratischer Ausschnitt)")
             return True
         return False
         
