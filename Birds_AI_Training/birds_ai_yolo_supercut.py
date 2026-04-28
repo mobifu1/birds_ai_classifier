@@ -96,6 +96,32 @@ class BirdsAiSupercut:
         )
         self.btn_save.pack(side=tk.LEFT, padx=10)
 
+        # --- Settings-Leiste ---
+        settings_frame = tk.Frame(self.root, bg="#f0f0f0")
+        settings_frame.pack(pady=5)
+
+        tk.Label(
+            settings_frame,
+            text="Confidence Threshold:",
+            bg="#f0f0f0",
+            font=("Arial", 10)
+        ).pack(side=tk.LEFT, padx=5)
+
+        self.confidence_var = tk.DoubleVar(value=self.CONFIDENCE_THRESHOLD)
+        self.confidence_scale = tk.Scale(
+            settings_frame,
+            variable=self.confidence_var,
+            from_=0.05,
+            to=1.0,
+            resolution=0.05,
+            orient=tk.HORIZONTAL,
+            bg="#f0f0f0",
+            length=200,
+            highlightthickness=0
+        )
+        self.confidence_scale.pack(side=tk.LEFT, padx=5)
+        self.confidence_scale.bind("<ButtonRelease-1>", self._on_confidence_change)
+
         # --- Bildanzeige-Bereich ---
         images_frame = tk.Frame(self.root, bg="#f0f0f0")
         images_frame.pack(pady=10, fill=tk.BOTH, expand=True, padx=15)
@@ -209,6 +235,18 @@ class BirdsAiSupercut:
         # Vogelerkennung starten
         self._detect_and_crop()
 
+    def _on_confidence_change(self, event=None):
+        """Wird aufgerufen, wenn der Slider losgelassen wird."""
+        if self.original_image is not None:
+            self.canvas_cropped.delete("all")
+            self.cropped_image = None
+            self.cropped_photo = None
+            self.btn_save.config(state="disabled")
+            self.info_label.config(text="")
+            self.status_label.config(text="Aktualisiere Erkennung...", fg="blue")
+            self.root.update()
+            self._detect_and_crop()
+
     def _display_image_on_canvas(self, pil_image, canvas, tag):
         """
         Zeigt ein PIL-Bild skaliert auf einem Canvas an.
@@ -265,7 +303,8 @@ class BirdsAiSupercut:
             for i in range(len(boxes)):
                 cls_id = int(boxes.cls[i].item())
                 conf = float(boxes.conf[i].item())
-                if cls_id == self.BIRD_CLASS_ID and conf >= self.CONFIDENCE_THRESHOLD:
+                print(f"[DEBUG] Erkannt: Klasse {cls_id}, Konfidenz {conf:.2f} (Schwellenwert: {self.confidence_var.get():.2f})")
+                if cls_id == self.BIRD_CLASS_ID and conf >= self.confidence_var.get():
                     x1, y1, x2, y2 = boxes.xyxy[i].tolist()
                     bird_detections.append({
                         "bbox": (x1, y1, x2, y2),
