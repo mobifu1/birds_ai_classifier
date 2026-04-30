@@ -26,40 +26,44 @@ Gerne erkläre ich dir die genaue Reihenfolge, in der diese Schritte in deinem C
 
 Die Reihenfolge im Code ist wie folgt aufgebaut (ein Schritt nach dem anderen):
 
-1. Ein Bild wird dem Classifier zur Analyse übergeben:
+1. Das eingehende Bild wird mit YOLO untersucht und ggf. der Vogel, wenn vorhanden, quadratisch ausgeschnitten und dem Classifier übergeben. Hierfür verwende ich das Yolo m-Modell (yolov8m.pt)
+
+2. Ein Bild wird dem Classifier zur Analyse übergeben:
 Ergebnis = liegt über Schwellwert Konfidenz > Das Bild wird der entsprechenden Klasse zugeordnet z.B. Klasse="Blaumeise" 
-Ergebnis = liegt unter dem Schwellwert Konfidenz und über dem Schwellwert Vermutung > Das Bild wird erneut geprüft > liegt der Schwellwert über dem Vorsprung > Bild wird klassifiziert
+Ergebnis = liegt unter dem Schwellwert Konfidenz und über dem Schwellwert Vermutung > Das Bild wird erneut geprüft > liegt der Schwellwert über dem Vorsprung > Bild wird klassifiziert > ggf. Online Check
 Ergebnis = liegt unter dem Schwellwert Vermutung >  Das Bild wird als unbekannt eingestuft
 
-2. Der Wert "Vorsprung der Konfidenz (Threshold %)" soll den Mindestabstand in % von Konfidenzwert Top 1 % zu Top 2 % eines Bildes darstellen.
+3. Der Wert "Vorsprung der Konfidenz (Threshold %)" soll den Mindestabstand in % von Konfidenzwert Top 1 % zu Top 2 % eines Bildes darstellen.
 Sollte die Vorhersage für Top 1 zwischen "Vermutung" und "Konfidenz" landen, wird nun die Differenz zwischen Top 1 % und Top 2 % berechnet.
 Beträgt dieser errechnete Abstand z.B. mindestens 10% (dein gewünschter neuer Standardwert), stuft die App den Vogel sofort als korrekt erkannt ein.
 Im Live-Log erscheint dabei dann eine neue Zeile mit dem Hinweis: 🎯 Vorsprung reicht (X%), akzeptiert als: [Vogelart].
 
-3. Dateien umbenennen
+4. Dateien umbenennen
 Das Bild wird basierend auf der erkannten Vogelart und der Wahrscheinlichkeit (Konfidenz z.B. 65) umbenannt (z.B. in Random_Rotkehlchen.jpg oder Random_Unbekannt.jpg).
 Ergebnis= das Rotkehlchen wird der Klasse Rotkehlchen und der Sperling wird der Klasse Unbekannt zugeordnet.
 
-4. Count Algorithm (Algorithmus)
+5. Count Algorithm (Algorithmus)
 Der Code schaut nun für die jeweils über dem Schwellwert liegende und somit klassifizierte Vogelart in die Kategorien ("lazy", "normal", "hectic") und den Zeitstempel. Stellt der Algorithmus fest, dass das Bild ignoriert werden soll (z.B. weil der gleiche "lazy"-Vogel immer noch da sitzt), wird es sofort als Random_Occupier.jpg umbenannt und der Klasse "Occupier" zugeordnet.
 Dies gilt auch für normal_timers und wird zu Random_Timer.jpg umbenannt und der Klasse "Timer" zugeordnet.
 
-5. Action
+6. Action
 Steht nun die klassifizierte Vogelart auf der Actionliste, werden die beiden Aktionen Start-Webhook und Stop-Webhook ausgelöst. Die Laufzeit in Sekunden zwischen beiden Webhooks kann unabhängig festgelegt werden. Diese Funktion dient dem Starten von z.B. einen Rasensprenger zum Verjagen bestimmter Vogelarten.
 
-6. Backlog
+7. Backlog
 Nun greift die Backlog-Checkbox. Es wird geprüft, ob die erkannte Vogelart oder auch "Unbekannt", "Occupier","Timers" auf deiner Backlog-Liste stehen. Ist das der Fall, wird das frisch umbenannte Bild in den backlog-Ordner verschoben. Auch hier endet die Verarbeitung für das Bild dann sofort. Weder die Greylist noch die Blacklist können dieses Bild jetzt noch löschen, und es wird (regulär) kein Eintrag in die Datenbank gemacht.
 
-7. Greylist
+8. Greylist
 Wurde das Bild nicht ins Backlog verschoben, kommt als Viertes die Greylist. Steht die erkannte Vogelart oder auch "Unbekannt", "Occupier","Timers" auf der Greylist, wird das Bild gelöscht (damit die Festplatte nicht voll wird), aber die Sichtung wird trotzdem in die Datenbank eingetragen. Danach wird zum nächsten Bild gesprungen.
 
-8. Blacklist
+9. Blacklist
 Hat das Bild auch die Greylist überstanden, kommt ganz zum Schluss die Blacklist-Prüfung. Hier wird kontrolliert, ob die erkannte Vogelart oder auch "Unbekannt", "Occupier","Timers" auf der Blacklist stehen. Ist das erfüllt, wird das Bild gnadenlos gelöscht. Es erfolgt kein Eintrag in die Datenbank.
 
-9. Final
+10. Final
 Hat das Bild alles überlebt wird es in der Datenbank eingetragen.
 
-Online Check:
+
+
+Wenn aktiviert: Online Check:
 Gemini wird nur gefragt, wenn sowohl die Konfidenz unter dem Schwellwert liegt als auch der Vorsprung nicht ausreicht.
 Der Vorsprung hat also Vorrang vor Gemini.
 

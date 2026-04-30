@@ -96,7 +96,7 @@ ONLINE_CHECK = False
 # Wenn True, wird das fertig bearbeitete Bild (nach Letterboxing, Resize und Masking)
 # in den Ordner 'debug_live_masking' kopiert, bevor es dem Modell übergeben wird.
 # So kann man genau sehen, was das KI-Modell als Eingabe erhält.
-debug_result_bildbearbeitung = False
+debug_result_bildbearbeitung = True
 
 # --- HELFER: DATUM AUS BILD LESEN ---
 def get_original_date(file_path):
@@ -783,7 +783,7 @@ class FolderMonitor:
     def scan_folder(self):
         conn = sqlite3.connect(DB_FILE, timeout=10)
         c = conn.cursor()
-        extensions = ['*.jpg', '*.jpeg', '*.JPG', '*.png']
+        extensions = ['*.jpg', '*.jpeg', '*.JPG', '*.png', '*.bmp', '*.BMP']
         files_found_iterators = []
         path_obj = Path(self.folder_path)
         
