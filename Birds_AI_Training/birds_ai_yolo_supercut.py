@@ -17,7 +17,7 @@ class BirdsAiSupercut:
     """
 
     BIRD_CLASS_ID = 14  # COCO-Klasse für 'bird'
-    YOLO_MODEL = "yolov8n.pt"  # Nano-Modell (schnell, klein, ausreichend genau)
+    YOLO_MODEL = "yolov8m.pt"  # Nano-Modell (schnell, klein, ausreichend genau)
     CONFIDENCE_THRESHOLD = 0.3  # Mindest-Konfidenz für die Erkennung
 
     def __init__(self, root):
@@ -46,7 +46,7 @@ class BirdsAiSupercut:
         # --- Titel ---
         title = tk.Label(
             self.root,
-            text="Birds AI Supercut",
+            text="Birds AI Yolo Supercut",
             font=("Arial", 16, "bold"),
             bg="#f0f0f0"
         )

@@ -81,9 +81,9 @@ MODEL_TARGET_SIZE = 299  # Das trainierte Modell erwartet 299x299 Pixel
 # --- YOLO SUPERCUT PARAMETER ---
 # YOLOv8 erkennt Vögel auf dem Kamerabild (800x448) und schneidet
 # den Vogel quadratisch aus, bevor er dem Classifier übergeben wird.
-YOLO_MODEL_NAME = "yolov8n.pt"  # Nano-Modell (schnell, ~6MB, wird beim 1. Start heruntergeladen)
+YOLO_MODEL_NAME = "yolov8m.pt"  # Nano-Modell (schnell, ~6MB, wird beim 1. Start heruntergeladen) > n=nano,m=medium,x=extra-large
 YOLO_BIRD_CLASS_ID = 14         # COCO-Klasse 14 = 'bird'
-YOLO_CONFIDENCE_THRESHOLD = 0.3 # Mindest-Konfidenz für die Vogel-Erkennung
+YOLO_CONFIDENCE_THRESHOLD = 0.25 # Mindest-Konfidenz für die Vogel-Erkennung
 
 # --- GEMINI ONLINE CHECK ---
 # Wenn True, wird nach der lokalen KI-Klassifizierung zusätzlich Gemini Vision API
@@ -96,7 +96,7 @@ ONLINE_CHECK = False
 # Wenn True, wird das fertig bearbeitete Bild (nach Letterboxing, Resize und Masking)
 # in den Ordner 'debug_live_masking' kopiert, bevor es dem Modell übergeben wird.
 # So kann man genau sehen, was das KI-Modell als Eingabe erhält.
-debug_result_bildbearbeitung = True
+debug_result_bildbearbeitung = False
 
 # --- HELFER: DATUM AUS BILD LESEN ---
 def get_original_date(file_path):
@@ -349,7 +349,7 @@ class BirdAI:
                 self.use_custom = True
                 # Erlaubte Labels aus der Labeldatei laden
                 self.allowed_labels = list(self.labels_map.values())
-                print("Eigenes Modell geladen.")
+                print(f"Eigenes Modell geladen: {self.custom_model_path}")
             except Exception as e:
                 print(f"Fehler beim Laden des eigenen Modells: {e}")
                 self.load_standard_model()

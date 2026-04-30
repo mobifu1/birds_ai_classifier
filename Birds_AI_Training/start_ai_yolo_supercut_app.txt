@@ -5,3 +5,9 @@ Die Aufgabe der App ist, den Vogel auf einem Bild, ohne Verzerrungen quadratisch
 Wenn kein Vogel auf dem Bild vorhanden sein sollte, muss die App das ebenfalls auf der GUI melden.
 Das Bild-Ergebnis des freigestellten Vogels soll anschließend auf der GUI dargestellt werden und über einen weiteren Button im Ordner meiner Wahl abgespeichert werden können.
 
+
+Weitere Modelle:
+yolov8n.pt > nano Modell
+yolov8m.pt > medium Modell
+yolov8x.pt > extra Large Modell
+
