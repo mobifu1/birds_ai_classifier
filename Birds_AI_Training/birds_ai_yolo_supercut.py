@@ -201,7 +201,7 @@ class BirdsAiSupercut:
             title="Bild auswählen",
             filetypes=[
                 ("JPEG-Bilder", "*.jpg *.jpeg"),
-                ("Alle Bilddateien", "*.jpg *.jpeg *.png *.bmp *.webp"),
+                ("Alle Bilddateien", "*.jpg *.jpeg *.png *.bmp *.BMP *.webp"),
                 ("Alle Dateien", "*.*")
             ]
         )
