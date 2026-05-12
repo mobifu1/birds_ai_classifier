@@ -2105,6 +2105,107 @@ def weekly_stats():
 
     return render_template('weekly.html', table_content=html_table, version=APP_VERSION)
 
+@app.route('/yearly')
+def yearly_stats():
+    current_year = datetime.datetime.now().year
+    
+    try:
+        selected_year = int(request.args.get('year', current_year))
+    except ValueError:
+        selected_year = current_year
+    
+    # Navigation: Vorheriges/Nächstes Jahr
+    prev_year = selected_year - 1
+    next_year = selected_year + 1 if selected_year < current_year else None
+    
+    # Datenbank bestimmen: aktuelles Jahr -> birds_stats.db, vergangene Jahre -> birds_stats_YYYY.db
+    if selected_year == current_year:
+        db_path = DB_FILE
+    else:
+        db_path = f"birds_stats_{selected_year}.db"
+    
+    monthly_data = {}
+    if os.path.exists(db_path):
+        try:
+            conn = sqlite3.connect(db_path, timeout=10)
+            query = f"""
+                SELECT 
+                    CAST(strftime('%m', timestamp) AS INTEGER) as month,
+                    COUNT(*) as count
+                FROM detections
+                WHERE timestamp LIKE '{selected_year}%'
+                  AND species != 'IGNORED_LOW_CONFIDENCE'
+                GROUP BY month
+                ORDER BY month
+            """
+            cursor = conn.cursor()
+            cursor.execute(query)
+            for row in cursor.fetchall():
+                monthly_data[row[0]] = row[1]
+            conn.close()
+        except Exception as e:
+            print(f"Fehler bei Jahresstatistik: {e}")
+    
+    # Deutsche Monatsnamen
+    month_names = [
+        'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+        'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'
+    ]
+    
+    # Daten für alle 12 Monate vorbereiten (0 wenn keine Daten)
+    months = list(range(1, 13))
+    counts = [monthly_data.get(m, 0) for m in months]
+    labels = month_names
+    total_year = sum(counts)
+    
+    chart_url = ""
+    if total_year > 0:
+        fig, ax = plt.subplots(figsize=(12, 6), facecolor='#1e1e1e')
+        
+        # Farbverlauf: kühle Farben im Winter, warme im Sommer
+        bar_colors = [
+            '#4fc3f7', '#4dd0e1', '#81c784', '#aed581',
+            '#dce775', '#fff176', '#ffb74d', '#ff8a65',
+            '#e57373', '#ce93d8', '#90a4ae', '#78909c'
+        ]
+        
+        bars = ax.bar(labels, counts, color=bar_colors, edgecolor='#333', linewidth=0.5)
+        
+        # Werte über den Balken anzeigen
+        for bar_item, count in zip(bars, counts):
+            if count > 0:
+                ax.text(bar_item.get_x() + bar_item.get_width() / 2, bar_item.get_height() + max(counts) * 0.02,
+                        str(count), ha='center', va='bottom', color='white', fontsize=11, fontweight='bold')
+        
+        ax.set_title(f'Vogelbesucher pro Monat – {selected_year}', color='white', fontsize=14, pad=15)
+        ax.set_xlabel('Monat', color='white', fontsize=12)
+        ax.set_ylabel('Anzahl Besucher', color='white', fontsize=12)
+        ax.tick_params(axis='x', colors='white', rotation=45)
+        ax.tick_params(axis='y', colors='white')
+        ax.set_facecolor('#1e1e1e')
+        ax.grid(True, axis='y', color='#333333', linestyle='--', alpha=0.5)
+        ax.set_axisbelow(True)
+        
+        # Y-Achse etwas Platz nach oben für Labels
+        if max(counts) > 0:
+            ax.set_ylim(0, max(counts) * 1.15)
+        
+        plt.tight_layout()
+        img = io.BytesIO()
+        fig.savefig(img, format='png', facecolor='#1e1e1e')
+        img.seek(0)
+        chart_url = base64.b64encode(img.getvalue()).decode()
+        plt.close(fig)
+    
+    return render_template('yearly.html',
+                                  chart_url=chart_url,
+                                  version=APP_VERSION,
+                                  selected_year=selected_year,
+                                  current_year=current_year,
+                                  prev_year=prev_year,
+                                  next_year=next_year,
+                                  total_year=total_year)
+
 @app.route('/daily')
 def daily_stats():
     # Aktuelles Datum und gewähltes Datum bestimmen
