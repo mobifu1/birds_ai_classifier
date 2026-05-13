@@ -2952,21 +2952,33 @@ def api_manual_entry_save():
     species = data.get('species')
     date_str = data.get('date')
     time_str = data.get('time')
+    count = data.get('count', 1)
+    
+    # Validate count
+    try:
+        count = int(count)
+        count = max(1, min(count, 99))
+    except (ValueError, TypeError):
+        count = 1
     
     if not species or not date_str or not time_str:
         return jsonify({"success": False, "error": "Fehlende Daten"})
         
     timestamp = f"{date_str} {time_str}:00"
-    dummy_filename = f"manual_{uuid.uuid4().hex[:8]}.jpg"
     
     try:
         conn = sqlite3.connect(DB_FILE, timeout=10)
         c = conn.cursor()
-        c.execute("INSERT INTO detections (filename, species, timestamp, confidence) VALUES (?, ?, ?, ?)", 
-                  (dummy_filename, species, timestamp, 1.0))
+        for i in range(count):
+            dummy_filename = f"manual_{uuid.uuid4().hex[:8]}.jpg"
+            c.execute("INSERT INTO detections (filename, species, timestamp, confidence) VALUES (?, ?, ?, ?)", 
+                      (dummy_filename, species, timestamp, 1.0))
         conn.commit()
         conn.close()
-        app_controller.update_log(f"Manueller Eintrag: {species} am {timestamp}")
+        if count > 1:
+            app_controller.update_log(f"Manueller Eintrag: {count}x {species} am {timestamp}")
+        else:
+            app_controller.update_log(f"Manueller Eintrag: {species} am {timestamp}")
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})

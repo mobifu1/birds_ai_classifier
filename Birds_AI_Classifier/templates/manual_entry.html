@@ -10,7 +10,7 @@
         .section { background: #263238; border-radius: 8px; padding: 20px; margin-bottom: 20px; border: 1px solid #37474f; }
         .row { display: flex; flex-direction: column; margin-bottom: 15px; }
         label { font-weight: bold; margin-bottom: 5px; }
-        select, input[type=date], input[type=time] { padding: 10px; border-radius: 6px; border: 1px solid #444; background: #121212; color: #fff; width: 100%; box-sizing: border-box; font-size: 1em; }
+        select, input[type=date], input[type=time], input[type=number] { padding: 10px; border-radius: 6px; border: 1px solid #444; background: #121212; color: #fff; width: 100%; box-sizing: border-box; font-size: 1em; }
         button, .btn { padding: 10px 20px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; color: white; display: inline-block; text-decoration: none; text-align: center; }
         .btn-green { background: #2e7d32; } .btn-green:hover { background: #388e3c; }
         .btn-gray { background: #546e7a; } .btn-gray:hover { background: #607d8b; }
@@ -45,6 +45,11 @@
                     <input type="time" id="time" required>
                 </div>
 
+                <div class="row">
+                    <label>Anzahl:</label>
+                    <input type="number" id="count" value="1" min="1" max="99" required>
+                </div>
+
                 <div style="margin-top: 25px;">
                     <button type="submit" class="btn btn-green" id="submitBtn" style="width: 100%; font-size: 1.1em; padding: 12px;">Speichern</button>
                 </div>
@@ -67,10 +72,12 @@
             btn.disabled = true;
             btn.innerText = "Speichere...";
             
+            const count = parseInt(document.getElementById('count').value) || 1;
             const data = {
                 species: document.getElementById('species').value,
                 date: document.getElementById('date').value,
-                time: document.getElementById('time').value
+                time: document.getElementById('time').value,
+                count: count
             };
 
             fetch('/api/manual_entry/save', {
@@ -84,7 +91,7 @@
                 if(data.success) {
                     msg.style.backgroundColor = 'rgba(46, 125, 50, 0.2)';
                     msg.style.color = '#81c784';
-                    msg.innerText = "✅ Erfolgreich gespeichert!";
+                    msg.innerText = count > 1 ? `✅ ${count}x erfolgreich gespeichert!` : "✅ Erfolgreich gespeichert!";
                     // Optional: form.reset()
                 } else {
                     msg.style.backgroundColor = 'rgba(198, 40, 40, 0.2)';
