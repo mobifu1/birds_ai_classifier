@@ -1900,6 +1900,8 @@ def dashboard():
         cmap = plt.get_cmap('tab20')
         colors = [('#555555' if sp == 'Unbekannt' else cmap(i % 20)) for i, sp in enumerate(df['species'])]
         ax.bar(df['species'], df['count'], color=colors)
+        ax.set_yscale('symlog', linthresh=1)
+        ax.set_ylim(bottom=0.8)
         ax.tick_params(axis='x', colors='white', rotation=45)
         ax.tick_params(axis='y', colors='white')
         ax.set_facecolor('#1e1e1e')
@@ -1919,6 +1921,8 @@ def dashboard():
             color_dict = {sp: colors[i] for i, sp in enumerate(df['species'])}
             colors_heute = [color_dict[sp] for sp in df_heute['species']]
             ax2.bar(df_heute['species'], df_heute['today_count'], color=colors_heute)
+            ax2.set_yscale('symlog', linthresh=1)
+            ax2.set_ylim(bottom=0.8)
             ax2.tick_params(axis='x', colors='white', rotation=45)
         else:
             ax2.bar(['Keine Daten'], [0], color=['#555555'])
