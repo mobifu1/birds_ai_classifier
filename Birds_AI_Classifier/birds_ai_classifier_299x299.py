@@ -30,7 +30,7 @@ from waitress import serve
 # --- WICHTIG: Matplotlib Einstellung ---
 import matplotlib
 matplotlib.use('Agg') 
-import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
 # System
 
@@ -1274,7 +1274,8 @@ def predict_rush_hour(df):
     unique_days = df['date'].nunique()
     if unique_days == 0: unique_days = 1
     hourly_counts = df.groupby('hour').size() / unique_days
-    fig, ax = plt.subplots(figsize=(8, 4), facecolor='#1e1e1e')
+    fig = Figure(figsize=(8, 4), facecolor='#1e1e1e')
+    ax = fig.subplots()
     ax.bar(hourly_counts.index, hourly_counts.values, color='#4fc3f7')
     ax.set_title('Durchschnittliche Besuche pro Stunde (Rush-Hour)', color='white')
     ax.set_xlabel('Uhrzeit', color='white')
@@ -1283,12 +1284,11 @@ def predict_rush_hour(df):
     ax.set_xticklabels([f"{h:02d}:00" for h in range(24)], rotation=45)
     ax.tick_params(colors='white')
     ax.set_facecolor('#1e1e1e')
-    plt.tight_layout()
+    fig.tight_layout()
     img = io.BytesIO()
     fig.savefig(img, format='png', facecolor='#1e1e1e')
     img.seek(0)
     chart_url = base64.b64encode(img.getvalue()).decode()
-    plt.close(fig)
     busiest_hour = hourly_counts.idxmax() if not hourly_counts.empty else "N/A"
     return busiest_hour, chart_url
 
@@ -1302,15 +1302,15 @@ def predict_species_probability(df, target_hour=None):
     probabilities = {sp: (count / total * 100) for sp, count in species_counts.items()}
     top5 = species_counts.head(5)
     if top5.sum() < total: top5['Andere'] = total - top5.sum()
-    fig, ax = plt.subplots(figsize=(6, 4), facecolor='#1e1e1e')
+    fig = Figure(figsize=(6, 4), facecolor='#1e1e1e')
+    ax = fig.subplots()
     ax.pie(top5.values, labels=top5.index, autopct='%1.1f%%', startangle=90, textprops={'color':"w"})
     ax.set_title(f'Wahrscheinlichkeit bis um {target_hour:02d}:00 Uhr', color='white')
-    plt.tight_layout()
+    fig.tight_layout()
     img = io.BytesIO()
     fig.savefig(img, format='png', facecolor='#1e1e1e')
     img.seek(0)
     chart_url = base64.b64encode(img.getvalue()).decode()
-    plt.close(fig)
     return probabilities, chart_url
 
 def analyze_disturbance(df):
@@ -1628,7 +1628,8 @@ def predict_weekly_visitors(df):
     total_combined = total_actual + total_forecast
 
     # --- 5. Diagramm zeichnen ---
-    fig, ax = plt.subplots(figsize=(8, 4), facecolor='#1e1e1e')
+    fig = Figure(figsize=(8, 4), facecolor='#1e1e1e')
+    ax = fig.subplots()
     ax.set_facecolor('#1e1e1e')
 
     x = range(7)
@@ -1672,12 +1673,11 @@ def predict_weekly_visitors(df):
     ax.yaxis.grid(True, color='#333', linestyle='--', linewidth=0.6)
     ax.set_axisbelow(True)
 
-    plt.tight_layout()
+    fig.tight_layout()
     img = io.BytesIO()
     fig.savefig(img, format='png', facecolor='#1e1e1e')
     img.seek(0)
     chart_url = base64.b64encode(img.getvalue()).decode()
-    plt.close(fig)
 
     # --- 6. Zusammenfassungstext ---
     remaining_days = 7 - (today.weekday() + 1)
@@ -1896,8 +1896,9 @@ def dashboard():
     chart_url_gesamt = ""
     if not df.empty:
         # 1. Chart Gesamt
-        fig, ax = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e')
-        cmap = plt.get_cmap('tab20')
+        fig = Figure(figsize=(10, 6), facecolor='#1e1e1e')
+        ax = fig.subplots()
+        cmap = matplotlib.colormaps['tab20']
         colors = [('#555555' if sp == 'Unbekannt' else cmap(i % 20)) for i, sp in enumerate(df['species'])]
         ax.bar(df['species'], df['count'], color=colors)
         ax.set_yscale('symlog', linthresh=1)
@@ -1906,16 +1907,16 @@ def dashboard():
         ax.tick_params(axis='y', colors='white')
         ax.set_facecolor('#1e1e1e')
         
-        plt.tight_layout()
+        fig.tight_layout()
         img_gesamt = io.BytesIO()
         fig.savefig(img_gesamt, format='png', facecolor='#1e1e1e')
         img_gesamt.seek(0)
         chart_url_gesamt = base64.b64encode(img_gesamt.getvalue()).decode()
-        plt.close(fig)
 
         # 2. Chart Heute (sortiert)
         df_heute = df[df['today_count'] > 0].sort_values(by='today_count', ascending=False)
-        fig2, ax2 = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e')
+        fig2 = Figure(figsize=(10, 6), facecolor='#1e1e1e')
+        ax2 = fig2.subplots()
         
         if not df_heute.empty:
             color_dict = {sp: colors[i] for i, sp in enumerate(df['species'])}
@@ -1930,12 +1931,11 @@ def dashboard():
             
         ax2.tick_params(axis='y', colors='white')
         ax2.set_facecolor('#1e1e1e')
-        plt.tight_layout()
+        fig2.tight_layout()
         img_heute = io.BytesIO()
         fig2.savefig(img_heute, format='png', facecolor='#1e1e1e')
         img_heute.seek(0)
         chart_url_heute = base64.b64encode(img_heute.getvalue()).decode()
-        plt.close(fig2)
 
     timestamp_now = int(time.time())
     
@@ -2164,7 +2164,8 @@ def yearly_stats():
     
     chart_url = ""
     if total_year > 0:
-        fig, ax = plt.subplots(figsize=(12, 6), facecolor='#1e1e1e')
+        fig = Figure(figsize=(12, 6), facecolor='#1e1e1e')
+        ax = fig.subplots()
         
         # Farbverlauf: kühle Farben im Winter, warme im Sommer
         bar_colors = [
@@ -2194,12 +2195,11 @@ def yearly_stats():
         if max(counts) > 0:
             ax.set_ylim(0, max(counts) * 1.15)
         
-        plt.tight_layout()
+        fig.tight_layout()
         img = io.BytesIO()
         fig.savefig(img, format='png', facecolor='#1e1e1e')
         img.seek(0)
         chart_url = base64.b64encode(img.getvalue()).decode()
-        plt.close(fig)
     
     return render_template('yearly.html',
                                   chart_url=chart_url,
@@ -2268,8 +2268,9 @@ def daily_stats():
         pivot_df = pivot_df.reindex(range(24), fill_value=0)
 
         # 4. Kurvendiagramm zeichnen
-        fig, ax = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e')
-        cmap = plt.get_cmap('tab20')
+        fig = Figure(figsize=(10, 6), facecolor='#1e1e1e')
+        ax = fig.subplots()
+        cmap = matplotlib.colormaps['tab20']
         
         for i, species in enumerate(pivot_df.columns):
             color = '#555555' if species == 'Unbekannt' else cmap(i % 20)
@@ -2294,12 +2295,11 @@ def daily_stats():
         ax.set_facecolor('#1e1e1e')
         
         # Als base64 Bild exportieren
-        plt.tight_layout()
+        fig.tight_layout()
         img = io.BytesIO()
         fig.savefig(img, format='png', facecolor='#1e1e1e')
         img.seek(0)
         chart_url = base64.b64encode(img.getvalue()).decode()
-        plt.close(fig)
 
     else:
         first_bird = None
