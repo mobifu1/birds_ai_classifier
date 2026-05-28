@@ -338,6 +338,7 @@ class BirdAI:
         self.yolo_model = YOLO(YOLO_MODEL_NAME)
         print("✅ YOLOv8-Modell geladen.")
         self.gemini_api_key = None
+        self.gemini_model = "gemini-2.5-flash"
         self.allowed_labels = []
 
         if os.path.exists(self.custom_model_path) and os.path.exists(self.labels_path):
@@ -366,6 +367,7 @@ class BirdAI:
                 with open(GEMINI_CONFIG_FILE, 'r') as f:
                     config = json.load(f)
                 self.gemini_api_key = config.get("api_key", "").strip()
+                self.gemini_model = config.get("model", "gemini-2.5-flash").strip()
                 if self.gemini_api_key:
                     print("✅ Gemini API-Key geladen. Online-Check ist AKTIV.")
                 else:
@@ -403,8 +405,8 @@ class BirdAI:
                 f"Antworte NUR mit dem einzelnen Artnamen, NICHTS anderes. Kein Satz, keine Erklärung, kein Punkt."
             )
 
-            # Gemini API Aufruf (gemini-2.0-flash mit Vision)
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={self.gemini_api_key}"
+            # Gemini API Aufruf (flexibles Modell)
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.gemini_model}:generateContent?key={self.gemini_api_key}"
 
             payload = {
                 "contents": [{
