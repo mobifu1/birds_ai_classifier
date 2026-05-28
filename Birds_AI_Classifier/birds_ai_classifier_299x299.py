@@ -357,8 +357,7 @@ class BirdAI:
             self.load_standard_model()
 
         # Gemini API-Key laden
-        if ONLINE_CHECK:
-            self._load_gemini_config()
+        self._load_gemini_config()
 
     def _load_gemini_config(self):
         """Lädt den Gemini API-Key aus der Konfigurationsdatei."""
@@ -903,7 +902,7 @@ class FolderMonitor:
                         self.log_callback(f"[{file_path.name}] 🎯 Vorsprung reicht ({margin_percent}%), akzeptiert als: {species}")
                     else:
                         # --- GEMINI ONLINE CHECK (bei unsicherer Konfidenz) ---
-                        if ONLINE_CHECK and self.ai.gemini_api_key:
+                        if app_controller.settings.get('online_check_active', ONLINE_CHECK) and self.ai.gemini_api_key:
                             top1_species = species.replace(" ", "_")
                             self.log_callback(f"[{file_path.name}] 🌐 Unsicher ({top1_species} {conf_percent}%). Frage Gemini...")
                             gemini_species, gemini_conf, raw_answer = self.ai.gemini_verify(str(file_path))
@@ -2619,6 +2618,7 @@ def settings_page():
                         <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="ping_active" {'checked' if s.get('ping_active', True) else ''}> <label style="color:darkgreen;">Camera: ping aktiv</label></div>
                         <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="debug_active" {'checked' if s.get('debug_active', True) else ''}> <label style="color:orange;">Debug Log</label></div>
                         <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="count_algo_active" {'checked' if s.get('count_algo_active', True) else ''}> <label style="color:purple;">Count Algorithm (Hectic/Normal/Lazy)</label></div>
+                        <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="online_check_active" {'checked' if s.get('online_check_active', False) else ''}> <label style="color:blue;">Gemini online check</label></div>
                     </div>
                 </div>
 
@@ -2748,6 +2748,7 @@ def settings_page():
                         ping_active: document.getElementById('ping_active').checked,
                         debug_active: document.getElementById('debug_active').checked,
                         count_algo_active: document.getElementById('count_algo_active').checked,
+                        online_check_active: document.getElementById('online_check_active').checked,
                         webhook_active: document.getElementById('webhook_active').checked,
                         backlog_active: document.getElementById('backlog_active').checked,
                         greylist_active: document.getElementById('greylist_active').checked,
