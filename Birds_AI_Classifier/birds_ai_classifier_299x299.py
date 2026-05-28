@@ -339,6 +339,7 @@ class BirdAI:
         print("✅ YOLOv8-Modell geladen.")
         self.gemini_api_key = None
         self.gemini_model = "gemini-2.5-flash"
+        self.gemini_max_tokens = 2048
         self.allowed_labels = []
 
         if os.path.exists(self.custom_model_path) and os.path.exists(self.labels_path):
@@ -368,6 +369,7 @@ class BirdAI:
                     config = json.load(f)
                 self.gemini_api_key = config.get("api_key", "").strip()
                 self.gemini_model = config.get("model", "gemini-2.5-flash").strip()
+                self.gemini_max_tokens = config.get("max_tokens", 2048)
                 if self.gemini_api_key:
                     print("✅ Gemini API-Key geladen. Online-Check ist AKTIV.")
                 else:
@@ -422,7 +424,7 @@ class BirdAI:
                 }],
                 "generationConfig": {
                     "temperature": 0.1,
-                    "maxOutputTokens": 50,
+                    "maxOutputTokens": self.gemini_max_tokens,
                     "responseMimeType": "application/json",
                     "responseSchema": {
                         "type": "OBJECT",
