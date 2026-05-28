@@ -422,7 +422,18 @@ class BirdAI:
                 }],
                 "generationConfig": {
                     "temperature": 0.1,
-                    "maxOutputTokens": 50
+                    "maxOutputTokens": 50,
+                    "responseMimeType": "application/json",
+                    "responseSchema": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "species": {
+                                "type": "STRING",
+                                "enum": self.allowed_labels + ["Unbekannt"]
+                            }
+                        },
+                        "required": ["species"]
+                    }
                 }
             }
 
@@ -437,9 +448,11 @@ class BirdAI:
 
             # Antwort parsen
             try:
-                gemini_answer = result["candidates"][0]["content"]["parts"][0]["text"].strip()
-            except (KeyError, IndexError):
-                print(f"⚠️ Gemini Antwort konnte nicht geparst werden: {result}")
+                gemini_answer_raw = result["candidates"][0]["content"]["parts"][0]["text"].strip()
+                parsed_json = json.loads(gemini_answer_raw)
+                gemini_answer = parsed_json.get("species", "Unbekannt")
+            except (KeyError, IndexError, json.JSONDecodeError) as e:
+                print(f"⚠️ Gemini Antwort konnte nicht geparst werden: {e} -> {result}")
                 return None, 0.0, "Parse-Fehler"
 
             # Antwort bereinigen: Punkte, Anführungszeichen, Zeilenumbrüche entfernen
