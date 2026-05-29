@@ -222,6 +222,7 @@ a.button-link:hover {
 
 label {
     font-weight: bold;
+    text-align: left;
 }
 
 input[type=text],
