@@ -233,6 +233,8 @@ input[type=number] {
     background: #121212;
     color: #fff;
     width: 60%;
+    flex-shrink: 0;
+    box-sizing: border-box;
 }
 
 input[type=checkbox] {
