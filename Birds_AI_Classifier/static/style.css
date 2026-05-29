@@ -251,6 +251,8 @@ button,
     display: inline-block;
     text-decoration: none;
     text-align: center;
+    font-family: inherit;
+    font-size: 1em;
 }
 
 .btn-green {
