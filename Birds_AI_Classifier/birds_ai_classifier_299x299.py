@@ -376,7 +376,7 @@ class BirdAI:
                 self.gemini_model = config.get("model", "gemini-2.5-flash").strip()
                 self.gemini_max_tokens = config.get("max_tokens", 2048)
                 if self.gemini_api_key:
-                    print("✅ Gemini API-Key geladen. Online-Check ist AKTIV.")
+                    print("✅ Gemini API-Key geladen. (Online-Check Modul bereit)")
                 else:
                     print("⚠️ Gemini API-Key ist leer in gemini_config.json. Online-Check deaktiviert.")
             except Exception as e:

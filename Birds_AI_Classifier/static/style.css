@@ -7,6 +7,10 @@ body {
     color: #e0e0e0;
 }
 
+input, button, textarea, select {
+    font-family: inherit;
+}
+
 .container {
     width: 90%;
     max-width: 1200px;
@@ -300,6 +304,7 @@ button,
     font-family: monospace;
     border-radius: 6px;
     box-sizing: border-box;
+    text-align: left;
 }
 
 .status-panel {

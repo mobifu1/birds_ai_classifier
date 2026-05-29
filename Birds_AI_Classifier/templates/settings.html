@@ -99,6 +99,9 @@
                     <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="count_algo_active"
                             {% if s.get('count_algo_active', True) %}checked{% endif %}> <label
                             style="color:purple;">Count Algorithm (Hectic/Normal/Lazy)</label></div>
+                    <div class="row" style="justify-content: flex-start;"><input type="checkbox" id="online_check_active"
+                            {% if s.get('online_check_active', False) %}checked{% endif %}> <label
+                            style="color:blue;">Gemini online check</label></div>
                 </div>
             </div>
 
