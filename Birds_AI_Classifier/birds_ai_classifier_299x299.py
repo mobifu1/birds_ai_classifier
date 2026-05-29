@@ -1156,7 +1156,7 @@ class FolderMonitor:
         conn.close()
 
 # --- NEU: VERSION ---
-APP_VERSION = "Version 1.2-RC"
+APP_VERSION = "Version 1.3-RC"
 
 # --- WEB SERVER (FLASK) ---
 app = Flask(__name__)
@@ -2869,6 +2869,9 @@ def api_update_detection(entry_id):
 
 # Main entry point update
 if __name__ == "__main__":
+    print("=" * 50)
+    print(f" Birds AI Classifier {APP_VERSION} gestartet ")
+    print("=" * 50)
     init_db()
     # Check ob wir einen Autostart brauchen
     s = load_settings()
