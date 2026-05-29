@@ -18,6 +18,11 @@ import subprocess
 import requests
 import platform
 
+# --- NEU: Astronomy für Nacht-Berechnung ---
+from astral import LocationInfo
+from astral.sun import sun
+import pytz
+
 # --- NEU: Pillow für EXIF-Daten ---
 from PIL import Image, ExifTags, ImageFilter
 
@@ -679,7 +684,8 @@ class FolderMonitor:
                  get_blacklist_callback, update_duration_callback=None,
                  update_remaining_callback=None, get_algo_active_callback=None,
                  get_webhook_active_callback=None,
-                 get_actionlist_callback=None, get_action_config_callback=None): 
+                 get_actionlist_callback=None, get_action_config_callback=None,
+                 get_settings_callback=None): 
         self.running = False
         self.folder_path = ""
         self.recursive = False 
@@ -699,6 +705,7 @@ class FolderMonitor:
         self.get_webhook_active = get_webhook_active_callback if get_webhook_active_callback else lambda: True
         self.get_actionlist_callback = get_actionlist_callback if get_actionlist_callback else lambda: set()
         self.get_action_config_callback = get_action_config_callback if get_action_config_callback else lambda: {}
+        self.get_settings_callback = get_settings_callback if get_settings_callback else lambda: {}
         self.update_duration_callback = update_duration_callback
         self.update_remaining_callback = update_remaining_callback
         self.thread = None
@@ -723,6 +730,25 @@ class FolderMonitor:
                 except Exception as e: self.log_callback(f"⚠️ Fehler bei Stop-Webhook: {e}")
         finally:
             self.action_active = False
+
+    def is_night(self, timestamp_str):
+        try:
+            dt = datetime.datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+            settings = self.get_settings_callback()
+            lat = float(settings.get("gps_lat", 51.165691))
+            lon = float(settings.get("gps_lon", 10.451526))
+            loc = LocationInfo("Home", "Germany", "Europe/Berlin", lat, lon)
+            s = sun(loc.observer, date=dt.date())
+            
+            local_tz = pytz.timezone("Europe/Berlin")
+            dt_aware = local_tz.localize(dt)
+            
+            if dt_aware < s['dawn'] or dt_aware > s['dusk']:
+                return True
+            return False
+        except Exception as e:
+            self.log_callback(f"⚠️ Fehler bei der Nachtberechnung: {e}")
+            return False
 
     def start(self, folder_path, recursive=False): 
         if not folder_path: return
@@ -941,6 +967,11 @@ class FolderMonitor:
                             self.log_callback(f"[{file_path.name}] 🤔 Vermutung ({top1_species} {conf_percent}%)")
                 else:
                     species = species.replace(" ", "_")
+                
+                # --- NEU: Nachtaktivität Check ---
+                if (species == "Vermutung" or species == "Unbekannt") and self.is_night(timestamp):
+                    species = "Nachtaktivitaet"
+                    self.log_callback(f"[{file_path.name}] 🌙 Nachtaktivitaet registriert (zu dunkel für Erkennung).")
                 
                 # 2. Files umbenennen (Random + Class)
                 file_ext = file_path.suffix
@@ -2289,7 +2320,12 @@ def daily_stats():
         cmap = matplotlib.colormaps['tab20']
         
         for i, species in enumerate(pivot_df.columns):
-            color = '#555555' if species == 'Unbekannt' else cmap(i % 20)
+            if species == 'Unbekannt':
+                color = '#555555'
+            elif species == 'Nachtaktivitaet':
+                color = '#1c2833' # Dunkelblau für Nacht
+            else:
+                color = cmap(i % 20)
             # marker='o' zeigt Punkte auf der Linie an Variablen
             ax.plot(pivot_df.index, pivot_df[species], marker='o', label=species, color=color, linewidth=2.5)
             
@@ -2372,7 +2408,8 @@ class BirdAppController:
             get_algo_active_callback=lambda: self.settings.get("count_algo_active", True),
             get_webhook_active_callback=lambda: self.settings.get("webhook_active", True),
             get_actionlist_callback=lambda: getattr(self, 'actionlist', set()),
-            get_action_config_callback=lambda: getattr(self, 'action_config', {})
+            get_action_config_callback=lambda: getattr(self, 'action_config', {}),
+            get_settings_callback=lambda: getattr(self, 'settings', {})
         )
         self.schedule_ping()
 

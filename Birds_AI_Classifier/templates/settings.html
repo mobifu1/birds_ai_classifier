@@ -65,6 +65,15 @@
                 </div>
 
                 <div class="row">
+                    <label>GPS Breitengrad (Latitude) für Tag/Nacht:</label>
+                    <input type="number" id="gps_lat" value="{{ s.get('gps_lat', 51.165691) }}" step="0.000001">
+                </div>
+                <div class="row">
+                    <label>GPS Längengrad (Longitude) für Tag/Nacht:</label>
+                    <input type="number" id="gps_lon" value="{{ s.get('gps_lon', 10.451526) }}" step="0.000001">
+                </div>
+
+                <div class="row">
                     <label>Mindest-Wahrscheinlichkeit Konfidenz (Threshold %):</label>
                     <input type="number" id="threshold" value="{{ s.get('threshold', 70) }}" min="0" max="100">
                 </div>
@@ -225,7 +234,9 @@
                     count_algo_active: document.getElementById('count_algo_active').checked,
                     backlog_active: document.getElementById('backlog_active').checked,
                     greylist_active: document.getElementById('greylist_active').checked,
-                    delete_active: document.getElementById('delete_active').checked
+                    delete_active: document.getElementById('delete_active').checked,
+                    gps_lat: parseFloat(document.getElementById('gps_lat').value) || 51.165691,
+                    gps_lon: parseFloat(document.getElementById('gps_lon').value) || 10.451526
                 },
                 lists: {
                     backlog: document.getElementById('backlog').value.split(',').map(s => s.trim()).filter(s => s),
