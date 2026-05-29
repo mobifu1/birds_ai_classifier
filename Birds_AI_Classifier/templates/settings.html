@@ -133,7 +133,8 @@
                 <h2>Listen Konfiguration (Filter)</h2>
 
                 <div class="row" style="justify-content: flex-start;">
-                    <label style="color:#009688; font-weight:bold;">Aktions-Liste: Bei diesen Arten wird die oben definierte Webhook-Aktion ausgeführt (max 60 Sekunden alte Bilder)</label>
+                    <input type="checkbox" id="webhook_active" {% if s.get('webhook_active', True) %}checked{% endif %}>
+                    <label style="color:#009688; font-weight:bold;">Aktions-Trigger aktiv: Bei diesen Arten wird die oben definierte Webhook-Aktion ausgeführt (max 60 Sekunden alte Bilder)</label>
                 </div>
                 <label>Aktions-Arten (kommagetrennt):</label>
                 <textarea class="list-editor" id="actionlist">{{ ','.join(app_controller.actionlist) }}</textarea>
@@ -235,6 +236,8 @@
                     ping_active: document.getElementById('ping_active').checked,
                     debug_active: document.getElementById('debug_active').checked,
                     count_algo_active: document.getElementById('count_algo_active').checked,
+                    online_check_active: document.getElementById('online_check_active').checked,
+                    webhook_active: document.getElementById('webhook_active').checked,
                     backlog_active: document.getElementById('backlog_active').checked,
                     greylist_active: document.getElementById('greylist_active').checked,
                     delete_active: document.getElementById('delete_active').checked,
