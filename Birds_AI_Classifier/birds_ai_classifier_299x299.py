@@ -2300,9 +2300,37 @@ def daily_stats():
         # 2. Zeitstempel in Pandas-Datetime konvertieren
         df['datetime'] = pd.to_datetime(df['timestamp'])
         
-        first_bird_row = df.sort_values(by='datetime').iloc[0]
-        first_bird = first_bird_row['species']
-        first_bird_time = first_bird_row['datetime'].strftime('%H:%M:%S')
+        # --- NEU: Tageszeit berechnen für den ersten Besucher ---
+        # Tag: beginnt ab Sonnenaufgang - 30min
+        # Nacht: beginnt ab Sonnenuntergang + 30min
+        s_settings = load_settings()
+        lat = float(s_settings.get("gps_lat", 51.165691))
+        lon = float(s_settings.get("gps_lon", 10.451526))
+        loc = LocationInfo("Home", "Germany", "Europe/Berlin", lat, lon)
+        local_tz = pytz.timezone("Europe/Berlin")
+        
+        try:
+            sun_info = sun(loc.observer, date=selected_date)
+            # astral liefert UTC Zeiten
+            sunrise_local = sun_info['sunrise'].astimezone(local_tz).replace(tzinfo=None)
+            sunset_local = sun_info['sunset'].astimezone(local_tz).replace(tzinfo=None)
+            
+            day_start = sunrise_local - datetime.timedelta(minutes=30)
+            day_end = sunset_local + datetime.timedelta(minutes=30)
+        except Exception:
+            day_start = datetime.datetime.combine(selected_date, datetime.time(4, 30))
+            day_end = datetime.datetime.combine(selected_date, datetime.time(22, 30))
+            
+        day_df = df[(df['datetime'] >= day_start) & (df['datetime'] <= day_end)]
+        
+        if not day_df.empty:
+            first_bird_row = day_df.sort_values(by='datetime').iloc[0]
+            first_bird = first_bird_row['species']
+            first_bird_time = first_bird_row['datetime'].strftime('%H:%M:%S')
+        else:
+            first_bird = None
+            first_bird_time = None
+        # --------------------------------------------------------
 
         # 3. Aggregation (Zusammenfassen der Sichtungen pro Stunde)
         # Wir extrahieren die Stunde (0-23) aus dem Datetime-Objekt

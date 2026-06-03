@@ -6,7 +6,7 @@ from PIL import Image
 from duckduckgo_search import DDGS
 
 # --- KONFIGURATION ---
-GESUCHTER_VOGEL = "Moenchsgrasmuecke"     # Nur noch der deutsche Name nötig
+GESUCHTER_VOGEL = "Gartenrotschwanz"     # Nur noch der deutsche Name nötig
 ANZAHL_PRO_SUCHE = 30             # Bilder pro Suchbegriff
 DOWNLOAD_ORDNER = "neue_bilder_downloads"
 pic_min_size = 500                # Minimale Kantenlänge (Breite UND Höhe) in Pixeln
