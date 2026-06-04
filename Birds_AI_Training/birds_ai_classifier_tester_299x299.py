@@ -213,7 +213,7 @@ class BirdAITesterApp:
             
         file_path = filedialog.askopenfilename(
             title="Bild auswählen",
-            filetypes=[("Image Files", "*.jpg', '*.jpeg', '*.JPG', '*.png', '*.bmp', '*.BMP"), ("All Files", "*.*")]
+            filetypes = [("Image Files", "*.jpg *.jpeg *.JPG *.png *.bmp *.BMP"), ("All Files", "*.*")]
         )
         
         if not file_path:
